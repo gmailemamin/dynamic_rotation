@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Secure Session Lab</title>
+  <link rel="stylesheet" href="/css/style.css" />
+</head>
+<body class="dashboard-theme">
+  <main class="container">
+    <div class="home-shell">
+      <header class="topbar">
+        <div class="topbar-inner">
+          <div>
+            <h1>Secure Communication Lab</h1>
+            <p class="topbar-subtitle">Platform eksperimen untuk penelitian tugas akhir mengenai Analisis Keamanan dan Performa RSA-AES berbasis Dynamic Session Key Rotation terhadap Serangan Replay dan Man-in-the-Middle.</p>
+          </div>
+          <span class="topbar-badge">Muhamad Amin</span>
+        </div>
+      </header>
+
+      <section class="scheme-grid" aria-label="Pilihan Sistem Keamanan">
+        <article class="scheme-card card-none">
+          <div>
+            <h2>No Encryption</h2>
+            <p>Mengirim pesan tanpa proses enkripsi.</p>
+          </div>
+          <a class="btn-card" href="/pages/login.html?scheme=no-encryption">Buka Pengujian</a>
+        </article>
+
+        <article class="scheme-card card-aes">
+          <div>
+            <h2>AES-256-GCM</h2>
+            <p>Enkripsi simetris dengan AES-256-GCM untuk menjaga kerahasiaan dan integritas pesan.</p>
+          </div>
+          <a class="btn-card" href="/pages/login.html?scheme=aes-256-gcm">Buka Pengujian</a>
+        </article>
+
+        <article class="scheme-card card-rsa">
+          <div>
+            <h2>RSA-OAEP</h2>
+            <p>Enkripsi asimetris menggunakan public key dan private key RSA.</p>
+          </div>
+          <a class="btn-card" href="/pages/login.html?scheme=rsa-oaep">Buka Pengujian</a>
+        </article>
+
+        <article class="scheme-card card-hybrid">
+          <div>
+            <h2>RSA-AES Hybrid</h2>
+            <p>Menggabungkan AES untuk mengenkripsi pesan dan RSA untuk mengenkripsi kunci AES.</p>
+          </div>
+          <a class="btn-card" href="/pages/login.html?scheme=rsa-aes-hybrid">Buka Pengujian</a>
+        </article>
+
+        <article class="scheme-card card-dynamic">
+          <div>
+            <h2>Dynamic Session Key Rotation</h2>
+            <p>Menguji enkripsi hybrid dengan mekanisme rotasi kunci sesi secara dinamis.</p>
+          </div>
+          <a class="btn-card" href="/pages/login.html?scheme=dynamic-rotation">Buka Pengujian</a>
+        </article>
+      </section>
+    </div>
+  </main>
+</body>
+</html>

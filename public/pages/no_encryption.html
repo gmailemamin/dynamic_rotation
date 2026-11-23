@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="id" data-require-scheme="no-encryption">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Pengujian No Encryption</title>
+  <script src="/js/auth-guard.js"></script>
+  <link rel="stylesheet" href="/css/style.css" />
+</head>
+
+<body class="dashboard-theme" data-scheme="no-encryption">
+  <main class="container">
+    <!-- Bar Navigasi Atas: Breadcrumb & Quick-Switch Pills -->
+    <div class="subnav-bar">
+      <div class="breadcrumb-trail">
+        <a href="/index.html">Pengujian</a>
+        <span>&gt;</span>
+        <span class="current-crumb">No-Encryption</span>
+      </div>
+      <nav class="scheme-pills" aria-label="Pindah Cepat Skema">
+        <a href="/pages/no_encryption.html" class="scheme-pill is-active"><span class="dot dot-red"></span>No
+          Encryption</a>
+        <a href="/pages/aes.html" class="scheme-pill"><span class="dot dot-blue"></span>AES-256-GCM</a>
+        <a href="/pages/rsa.html" class="scheme-pill"><span class="dot dot-amber"></span>RSA-OAEP</a>
+        <a href="/pages/rsa_aes.html" class="scheme-pill"><span class="dot dot-purple"></span>RSA-AES Hybrid</a>
+        <a href="/pages/rsa_aes_dynamicRotation.html" class="scheme-pill"><span class="dot dot-green"></span>Dynamic
+          Rotation</a>
+      </nav>
+    </div>
+
+    <!-- 1. Header Skema -->
+    <section class="panel-card scheme-header-card">
+      <div class="scheme-header-top">
+        <div class="scheme-title-group">
+          <div class="scheme-icon-box">&lt;/&gt;</div>
+          <div>
+            <h1>Pengujian No Encryption</h1>
+            <span class="badge-danger">Pengujian tanpa mekanisme enkripsi</span>
+            <p class="card-desc top-sm">
+              Pengujian pengiriman pesan tanpa menggunakan algoritma enkripsi. Dipakai sebagai baseline benchmark
+              performa mentah.
+            </p>
+            <div class="scheme-meta">
+              <span>Tingkat Keamanan: <strong class="text-danger">Tidak Aman</strong></span>
+              <span>Score: <strong class="text-danger">1/10 (None)</strong></span>
+            </div>
+          </div>
+        </div>
+        <button type="button" id="btnLogoutScheme" class="btn-back">
+          Logout
+        </button>
+      </div>
+    </section>
+
+    <!-- 2. Baris 1: Pengujian Manual (Kiri) & Hasil Pengujian Manual (Kanan) -->
+    <section class="two-col-grid top-lg">
+      <div class="panel-card">
+        <div class="section-heading">
+          <span class="heading-icon">&#10148;</span>
+          <div>
+            <h2>Pengujian Manual</h2>
+            <p class="card-desc">Kirim satu pesan untuk menguji komunikasi tanpa enkripsi.</p>
+          </div>
+        </div>
+
+        <div class="manual-form-body">
+          <div class="form-group">
+            <label for="manual-message-input">Pesan</label>
+            <textarea id="manual-message-input" rows="5">Halo server, ini pesan pengujian tanpa enkripsi.</textarea>
+          </div>
+
+          <button id="btn-send-one" type="button" class="btn-primary btn-full">
+            &#10148; Kirim Pesan
+          </button>
+        </div>
+      </div>
+
+      <div class="panel-card">
+        <div class="section-heading">
+          <span class="heading-icon">&#10003;</span>
+          <div>
+            <h2>Hasil Pengujian Manual</h2>
+            <p class="card-desc">Hasil komunikasi antara client dan server.</p>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Pesan Asli</label>
+          <div id="manual-original-msg" class="readonly-box">-</div>
+        </div>
+
+        <div class="form-group">
+          <label>Pesan yang Diterima Server</label>
+          <div id="manual-received-msg" class="readonly-box">-</div>
+        </div>
+
+        <div class="manual-meta-row">
+          <span>Status</span>
+          <strong id="manual-status" class="text-success">-</strong>
+        </div>
+
+        <div class="manual-meta-row">
+          <span>Waktu Proses</span>
+          <strong id="manual-timing">-</strong>
+        </div>
+
+        <p id="manual-summary-line" class="helper-text">Belum ada pengujian manual yang dijalankan.</p>
+      </div>
+    </section>
+
+    <!-- 3. Baris 2: Pengujian Otomatis (Kiri) & Hasil Pengujian Otomatis (Kanan) -->
+    <section class="two-col-grid top-lg">
+      <div class="panel-card">
+        <div class="section-heading">
+          <span class="heading-icon">&#9776;</span>
+          <div>
+            <h2>Pengujian Otomatis (Batch Testing)</h2>
+            <p class="card-desc">Pengiriman pesan otomatis untuk mengukur performa berdasarkan jumlah request.</p>
+          </div>
+        </div>
+
+        <div class="form-grid-2">
+          <div class="form-group">
+            <label for="preset-count">Jumlah Request (Preset)</label>
+            <select id="preset-count">
+              <option value="">-- Custom --</option>
+              <option value="50">50 Request</option>
+              <option value="100" selected>100 Request</option>
+              <option value="250">250 Request</option>
+              <option value="500">500 Request</option>
+              <option value="750">750 Request</option>
+              <option value="1000">1000 Request</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="custom-count">Jumlah Request (Ketik Manual)</label>
+            <input id="custom-count" type="number" min="1" max="10000" value="100" />
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="batch-message-input">Pesan Pengujian</label>
+          <textarea id="batch-message-input" rows="4">Halo server, ini pesan pengujian batch tanpa enkripsi.</textarea>
+        </div>
+
+        <button id="btn-send-batch" type="button" class="btn-primary btn-full">
+          &#9654; Mulai Batch Testing
+        </button>
+
+        <div class="progress-box">
+          <div class="progress-header">
+            <span id="batch-status-text">Status: Siap</span>
+            <span id="batch-count-text">0 / 100</span>
+          </div>
+          <div class="progress-track">
+            <div id="batch-progress-bar" class="progress-fill" style="width: 0%;"></div>
+          </div>
+        </div>
+
+        <p id="batch-summary-note" class="helper-text">Batch testing belum dijalankan.</p>
+      </div>
+
+      <div class="panel-card">
+        <div class="section-heading">
+          <span class="heading-icon">&#9638;</span>
+          <div>
+            <h2>Hasil Pengujian Otomatis</h2>
+            <p class="card-desc">Detail response time dan status untuk setiap request.</p>
+          </div>
+        </div>
+
+        <div class="table-wrap">
+          <table class="result-table">
+            <thead>
+              <tr>
+                <th>Request</th>
+                <th>Response Time (ms)</th>
+                <th>Latency (ms)</th>
+                <th>Throughput (KB/s)</th>
+                <th>Total Bytes</th>
+                <th>CPU Server (ms)</th>
+                <th>RAM RSS (MB)</th>
+                <th>RAM Heap (MB)</th>
+              </tr>
+            </thead>
+            <tbody id="batch-table-body">
+              <tr>
+                <td colspan="8" class="empty-cell">Belum ada data hasil pengujian batch.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- 4. Baris 3: Rekapitulasi Hasil Batch + Tombol Unduh CSV di Bawah -->
+    <section class="panel-card top-lg">
+      <div class="section-heading">
+        <span class="heading-icon">&#9783;</span>
+        <div>
+          <h2>Rekapitulasi Hasil Batch</h2>
+          <p class="card-desc">Ringkasan performa pengujian otomatis tanpa enkripsi.</p>
+        </div>
+      </div>
+
+      <div class="recap-grid-3">
+        <div class="recap-item">
+          <span>Total Request</span>
+          <strong id="recap-total">0</strong>
+        </div>
+        <div class="recap-item">
+          <span>Berhasil</span>
+          <strong id="recap-success" class="text-success">0</strong>
+        </div>
+        <div class="recap-item">
+          <span>Gagal</span>
+          <strong id="recap-failed" class="text-danger">0</strong>
+        </div>
+
+        <div class="recap-item">
+          <span>Rata-rata Response Time</span>
+          <strong id="recap-avg-rt">0.000 ms</strong>
+        </div>
+        <div class="recap-item">
+          <span>Minimum Response Time</span>
+          <strong id="recap-min-rt">0.000 ms</strong>
+        </div>
+        <div class="recap-item">
+          <span>Maksimum Response Time</span>
+          <strong id="recap-max-rt">0.000 ms</strong>
+        </div>
+
+        <div class="recap-item">
+          <span>Total Waktu Pengujian</span>
+          <strong id="recap-total-time">0.000 ms</strong>
+        </div>
+        <div class="recap-item">
+          <span>Throughput</span>
+          <strong id="recap-req-per-sec">0.000 request/detik</strong>
+        </div>
+        <div class="recap-item">
+          <span>Success Rate</span>
+          <strong id="recap-success-rate">0.00%</strong>
+        </div>
+
+        <div class="recap-item">
+          <span>Rata-rata Latency</span>
+          <strong id="recap-avg-lat">0.000 ms</strong>
+        </div>
+        <div class="recap-item">
+          <span>Rata-rata Throughput (KB/s)</span>
+          <strong id="recap-avg-tp">0.000 KB/s</strong>
+        </div>
+        <div class="recap-item">
+          <span>Total Bytes</span>
+          <strong id="recap-bytes">0 bytes</strong>
+        </div>
+
+        <div class="recap-item">
+          <span>Rata-rata CPU Server</span>
+          <strong id="recap-avg-cpu">0.000 ms</strong>
+        </div>
+        <div class="recap-item">
+          <span>Rata-rata RAM RSS</span>
+          <strong id="recap-avg-rss">0.00 MB</strong>
+        </div>
+        <div class="recap-item">
+          <span>Rata-rata RAM Heap</span>
+          <strong id="recap-avg-heap">0.00 MB</strong>
+        </div>
+      </div>
+
+      <div class="recap-footer">
+        <div>
+          <strong id="recap-footer-status" class="text-success">Siap menguji</strong>
+          <p id="recap-footer-desc" class="card-desc no-margin">Jalankan batch testing untuk mengunduh hasil CSV.</p>
+        </div>
+        <button id="btn-download-csv" type="button" class="btn-primary" disabled>
+          &darr; Unduh Hasil CSV
+        </button>
+      </div>
+    </section>
+  </main>
+  <script src="/js/no_encryption-page.js"></script>
+  <!-- 
+  <script src="/js/common.js"></script>
+  <script src="/js/schema-page.js"></script> -->
+</body>
+
+</html>

@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="id" data-require-scheme="rsa-oaep">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Pengujian RSA-OAEP - Analisis Keamanan & Performa RS-AES</title>
+    <script src="/js/auth-guard.js"></script>
+    <link rel="stylesheet" href="/css/style.css" />
+</head>
+
+<body class="dashboard-theme">
+    <main class="container">
+        <!-- Breadcrumb & Navigasi Antar Skema -->
+        <nav class="subnav-bar" aria-label="Navigasi Skema Pengujian">
+            <div class="breadcrumb-trail">
+                <a href="/index.html">Beranda</a>
+                <span>/</span>
+                <span>Skema Pengujian</span>
+                <span>/</span>
+                <span class="current-crumb">RSA-OAEP</span>
+            </div>
+
+            <div class="scheme-pills">
+                <a class="scheme-pill" href="/pages/no_encryption.html">
+                    <span class="dot dot-red"></span>
+                    No Encryption
+                </a>
+                <a class="scheme-pill" href="/pages/aes.html">
+                    <span class="dot dot-blue"></span>
+                    AES-256-GCM
+                </a>
+                <a class="scheme-pill is-active" href="/pages/rsa.html">
+                    <span class="dot dot-amber"></span>
+                    RSA-OAEP
+                </a>
+                <a class="scheme-pill" href="/pages/rsa_aes.html">
+                    <span class="dot dot-purple"></span>
+                    RSA-AES Hybrid
+                </a>
+                <a class="scheme-pill" href="/pages/rsa_aes_dynamicRotation.html">
+                    <span class="dot dot-green"></span>
+                    Dynamic Rotation
+                </a>
+            </div>
+        </nav>
+
+        <!-- Header Skema -->
+        <section class="panel-card scheme-header-card">
+            <div class="scheme-header-top">
+                <div class="scheme-title-group">
+                    <div class="scheme-icon-box">RSA</div>
+                    <div>
+                        <h1>Pengujian RSA-OAEP</h1>
+                        <span class="badge-danger"
+                            style="background-color: rgba(245, 158, 11, 0.14); color: #fcd34d; border-color: rgba(245, 158, 11, 0.4);">
+                            Enkripsi Asimetris (RSA-2048 + OAEP SHA-256)
+                        </span>
+                        <p class="card-desc top-sm">
+                            Mengenkripsi dan mendekripsi pesan menggunakan pasangan kunci RSA-2048 dengan skema padding
+                            OAEP (SHA-256). Cocok untuk payload pendek (maks. 190 byte).
+                        </p>
+                        <div class="scheme-meta">
+                            <span>Tingkat Keamanan: <strong style="color: #fbbf24;">Tinggi (Asimetris
+                                    2048-bit)</strong></span>
+                            <span>Score: <strong>8.0/10 (RSA-OAEP)</strong></span>
+                        </div>
+                    </div>
+                </div>
+                <button type="button" id="btnLogoutScheme" class="btn-back">
+                    Logout
+                </button>
+            </div>
+        </section>
+
+        <!-- BARIS 1: Pengujian Manual (Kiri) & Hasil Pengujian Manual (Kanan) -->
+        <section class="two-col-grid top-lg">
+            <article class="panel-card">
+                <div class="section-heading">
+                    <span class="heading-icon">01</span>
+                    <div>
+                        <h2>Pengujian Manual</h2>
+                        <p class="card-desc">Kirim satu pesan untuk menguji enkripsi &amp; dekripsi RSA-2048 OAEP.</p>
+                    </div>
+                </div>
+
+                <form id="manualForm">
+                    <div class="form-group">
+                        <label for="manualMessage">Pesan</label>
+                        <textarea id="manualMessage" rows="5">Halo server, ini uji enkripsi RSA-2048 OAEP.</textarea>
+                    </div>
+
+                    <button type="submit" id="btnManualSend" class="btn-primary btn-full">
+                        &#10148; Kirim &amp; Uji RSA-OAEP
+                    </button>
+                </form>
+            </article>
+
+            <article class="panel-card">
+                <div class="section-heading">
+                    <span class="heading-icon">&#10003;</span>
+                    <div>
+                        <h2>Hasil Pengujian Manual</h2>
+                        <p class="card-desc">Hasil enkripsi asimetris, dekripsi, dan performa di server.</p>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>Parameter Kunci &amp; Padding</label>
+                    <div id="rsaMetaBox" class="readonly-box">Key: - | Padding: - | Ciphertext Size: -</div>
+                </div>
+
+                <div class="form-group">
+                    <label>Ciphertext (Hex)</label>
+                    <div id="rsaCipherBox" class="readonly-box">-</div>
+                </div>
+
+                <div class="form-group">
+                    <label>Pesan Hasil Dekripsi Server</label>
+                    <div id="rsaDecryptedBox" class="readonly-box">-</div>
+                </div>
+
+                <div class="manual-meta-row">
+                    <span>Status</span>
+                    <strong id="manualStatus">Siap</strong>
+                </div>
+                <div class="manual-meta-row">
+                    <span>Waktu Proses</span>
+                    <strong id="manualTiming">-</strong>
+                </div>
+                <p id="manualSummaryLine" class="helper-text top-sm no-margin">
+                    Menunggu pengujian manual dijalankan.
+                </p>
+            </article>
+        </section>
+
+        <!-- BARIS 2: Pengujian Otomatis / Batch (Kiri) & Hasil Pengujian Otomatis (Kanan) -->
+        <section class="two-col-grid top-lg">
+            <article class="panel-card">
+                <div class="section-heading">
+                    <span class="heading-icon">02</span>
+                    <div>
+                        <h2>Pengujian Otomatis (Batch Testing)</h2>
+                        <p class="card-desc">Pengiriman pesan otomatis untuk mengukur performa berdasarkan jumlah
+                            request.</p>
+                    </div>
+                </div>
+
+                <form id="batchForm">
+                    <div class="form-grid-2">
+                        <div class="form-group">
+                            <label for="batchPreset">Jumlah Request (Preset)</label>
+                            <select id="batchPreset">
+                                <option value="50">50 Request</option>
+                                <option value="100" selected>100 Request</option>
+                                <option value="250">250 Request</option>
+                                <option value="500">500 Request</option>
+                                <option value="750">750 Request</option>
+                                <option value="1000">1000 Request</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="batchCount">Jumlah Request (Ketik Manual)</label>
+                            <input type="number" id="batchCount" min="1" max="10000" value="100" />
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="batchPrefix">Pesan Pengujian</label>
+                        <textarea id="batchPrefix"
+                            rows="3">Halo server, ini pesan pengujian batch AES-256-GCM.</textarea>
+                    </div>
+
+                    <button type="submit" id="btnBatchStart" class="btn-primary btn-full">
+                        &#9654; Mulai Batch Testing
+                    </button>
+                </form>
+
+                <div class="progress-box">
+                    <div class="progress-header">
+                        <span id="batchStatusText">Status: Menunggu pengujian</span>
+                        <span id="progressText">0 / 0</span>
+                    </div>
+                    <div class="progress-track">
+                        <div id="progressFill" class="progress-fill" style="width: 0%;"></div>
+                    </div>
+                </div>
+            </article>
+
+            <article class="panel-card">
+                <div class="section-heading">
+                    <span class="heading-icon">#</span>
+                    <div>
+                        <h2>Hasil Pengujian Otomatis</h2>
+                        <p class="card-desc">Detail response time, latensi, throughput, dan metrik server untuk setiap
+                            request.</p>
+                    </div>
+                </div>
+
+                <div class="table-wrap">
+                    <table class="result-table">
+                        <thead>
+                            <tr>
+                                <th>Request</th>
+                                <th>Response Time (ms)</th>
+                                <th>Latency (ms)</th>
+                                <th>Throughput (KB/s)</th>
+                                <th>Total Bytes</th>
+                                <th>CPU Server (ms)</th>
+                                <th>RAM RSS (MB)</th>
+                                <th>RAM Heap (MB)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="batchTableBody">
+                            <tr>
+                                <td colspan="8" class="empty-cell">Belum ada data pengujian batch.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </article>
+        </section>
+
+        <!-- Rekapitulasi Hasil Batch Lengkap (15 Metrik dalam Grid 3 Kolom) -->
+        <section class="panel-card top-lg">
+            <div class="section-heading">
+                <span class="heading-icon">&#9783;</span>
+                <div>
+                    <h2>Rekapitulasi Hasil Batch</h2>
+                    <p class="card-desc">Ringkasan performa pengujian otomatis enkripsi RSA-OAEP.</p>
+                </div>
+            </div>
+
+            <div class="recap-grid-3">
+                <!-- Baris 1 -->
+                <div class="recap-item">
+                    <span>Total Request</span>
+                    <strong id="recapTotalReq">0</strong>
+                </div>
+                <div class="recap-item">
+                    <span>Berhasil</span>
+                    <strong id="recapSuccessCount">0</strong>
+                </div>
+                <div class="recap-item">
+                    <span>Gagal</span>
+                    <strong id="recapFailedCount">0</strong>
+                </div>
+
+                <!-- Baris 2 -->
+                <div class="recap-item">
+                    <span>Rata-rata Response Time</span>
+                    <strong id="recapAvgResp">0.000 ms</strong>
+                </div>
+                <div class="recap-item">
+                    <span>Minimum Response Time</span>
+                    <strong id="recapMinResp">0.000 ms</strong>
+                </div>
+                <div class="recap-item">
+                    <span>Maksimum Response Time</span>
+                    <strong id="recapMaxResp">0.000 ms</strong>
+                </div>
+
+                <!-- Baris 3 -->
+                <div class="recap-item">
+                    <span>Total Waktu Pengujian</span>
+                    <strong id="recapTotalTime">0.000 ms</strong>
+                </div>
+                <div class="recap-item">
+                    <span>Throughput</span>
+                    <strong id="recapRps">0.000 request/detik</strong>
+                </div>
+                <div class="recap-item">
+                    <span>Success Rate</span>
+                    <strong id="recapSuccessRate">0.00%</strong>
+                </div>
+
+                <!-- Baris 4 -->
+                <div class="recap-item">
+                    <span>Rata-rata Latency</span>
+                    <strong id="recapAvgLat">0.000 ms</strong>
+                </div>
+                <div class="recap-item">
+                    <span>Rata-rata Throughput (KB/s)</span>
+                    <strong id="recapAvgTput">0.000 KB/s</strong>
+                </div>
+                <div class="recap-item">
+                    <span>Total Bytes</span>
+                    <strong id="recapTotalBytes">0 bytes</strong>
+                </div>
+
+                <!-- Baris 5 -->
+                <div class="recap-item">
+                    <span>Rata-rata CPU Server</span>
+                    <strong id="recapAvgCpu">0.000 ms</strong>
+                </div>
+                <div class="recap-item">
+                    <span>Rata-rata RAM RSS</span>
+                    <strong id="recapAvgRss">0.00 MB</strong>
+                </div>
+                <div class="recap-item">
+                    <span>Rata-rata RAM Heap</span>
+                    <strong id="recapAvgHeap">0.00 MB</strong>
+                </div>
+            </div>
+
+            <div class="recap-footer">
+                <div>
+                    <strong id="recapFooterStatus" class="text-success" style="display: none;">&#10003; Pengujian batch
+                        selesai</strong>
+                    <p id="exportInfo" class="helper-text no-margin">Hasil pengujian belum tersedia untuk diunduh.</p>
+                </div>
+                <button type="button" id="btnExportCsv" class="btn-primary" disabled>
+                    &#8595; Unduh Hasil CSV
+                </button>
+            </div>
+        </section>
+    </main>
+
+    <script src="/js/rsa-page.js"></script>
+</body>
+
+</html>
