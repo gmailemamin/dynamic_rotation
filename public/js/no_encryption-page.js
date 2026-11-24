@@ -221,33 +221,60 @@ btnSendOne?.addEventListener('click', async () => {
   }
 });
 
-// BATCH TABLE
 
+// BATCH TABLE
 function renderBatchTable(rows) {
   if (!rows.length) {
-    batchTableBodyEl.innerHTML =
-      '<tr><td colspan="8" class="empty-cell">' +
-      'Belum ada data hasil pengujian batch.' +
-      '</td></tr>';
-
+    batchTableBodyEl.innerHTML = `
+      <tr>
+        <td colspan="15" class="empty-cell">
+          Belum ada data hasil pengujian batch.
+        </td>
+      </tr>
+    `;
     return;
   }
 
-  batchTableBodyEl.innerHTML = rows
-    .map((r) => `
-            <tr>
-                <td>${r.seq}</td>
-                <td>${formatNumber(r.responseTimeMs)}</td>
-                <td>${formatNumber(r.serverProcessingMs)}</td>
-                <td>${r.totalBytes || 0}</td>
-                <td>${formatNumber(r.cpuServerMs)}</td>
-                <td>${formatNumber(r.ramRssMb, 2)}</td>
-                <td>${formatNumber(r.ramHeapMb, 2)}</td>
-                <td>${r.ok ? 'Success' : 'Failed'}</td>
-            </tr>
-        `)
-    .join('');
+  // Durasi batch sementara atau final
+  const durationMs = lastBatchElapsedMs;
+
+  // Menghitung jumlah request berhasil
+  const successCount = rows.filter((r) => r.ok).length;
+
+  // Menghitung total ukuran payload
+  const totalBytes = sum(rows, 'totalBytes');
+
+  // Request Throughput (req/s)
+  const requestThroughput = durationMs > 0
+    ? successCount / (durationMs / 1000)
+    : 0;
+
+  // Payload Throughput (KB/s)
+  const payloadThroughput = durationMs > 0
+    ? (totalBytes / 1024) / (durationMs / 1000)
+    : 0;
+
+  batchTableBodyEl.innerHTML = rows.map((r) => `
+    <tr>
+      <td>${r.seq ?? '-'}</td>
+      <td>${r.httpStatus ?? '-'}</td>
+      <td>${r.ok ? 'true' : 'false'}</td>
+      <td>${formatNumber(r.responseTimeMs)}</td>
+      <td>${formatNumber(r.serverProcessingMs)}</td>
+      <td>${formatNumber(r.cryptoProcessingMs)}</td>
+      <td>${r.requestBytes ?? 0}</td>
+      <td>${r.responseBytes ?? 0}</td>
+      <td>${r.totalBytes ?? 0}</td>
+      <td>${formatNumber(r.cpuServerMs)}</td>
+      <td>${formatNumber(r.ramRssMb, 2)}</td>
+      <td>${formatNumber(r.ramHeapMb, 2)}</td>
+      <td>${formatNumber(durationMs)}</td>
+      <td>${formatNumber(requestThroughput)}</td>
+      <td>${formatNumber(payloadThroughput)}</td>
+    </tr>
+  `).join('');
 }
+
 
 // BATCH RECAP
 function updateRecap(
@@ -358,7 +385,7 @@ function updateRecap(
     recapMaxRtEl.textContent =
       `${formatNumber(Math.max(...rtList))} ms`;
 
-    // Server Processing Time
+    // Average Server Processing Time
     recapAvgLatEl.textContent =
       `${formatNumber(average(successRows, 'serverProcessingMs'))} ms`;
 

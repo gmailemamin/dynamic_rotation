@@ -105,12 +105,12 @@
                 </div>
 
                 <div class="form-group">
-                    <label>IV / Nonce (12-byte Hex) &amp; Auth Tag (16-byte Hex)</label>
+                    <label>IV / Nonce (Base64) &amp; Auth Tag (Base64)</label>
                     <div id="aesIvTagBox" class="readonly-box">IV: - | Tag: -</div>
                 </div>
 
                 <div class="form-group">
-                    <label>Ciphertext (Hex)</label>
+                    <label>Ciphertext (Base64)</label>
                     <div id="aesCipherBox" class="readonly-box">-</div>
                 </div>
 
@@ -196,27 +196,39 @@
                     </div>
                 </div>
 
+
                 <div class="table-wrap">
                     <table class="result-table">
                         <thead>
                             <tr>
                                 <th>Request</th>
+                                <th>Status HTTP</th>
+                                <th>Success</th>
                                 <th>Response Time (ms)</th>
-                                <th>Latency (ms)</th>
-                                <th>Throughput (KB/s)</th>
+                                <th>Server Processing Time (ms)</th>
+                                <th>Crypto Processing Time (ms)</th>
+                                <th>Request Bytes</th>
+                                <th>Response Bytes</th>
                                 <th>Total Bytes</th>
                                 <th>CPU Server (ms)</th>
                                 <th>RAM RSS (MB)</th>
                                 <th>RAM Heap (MB)</th>
+                                <th>Batch Duration (ms)</th>
+                                <th>Request Throughput (req/s)</th>
+                                <th>Payload Throughput (KB/s)</th>
                             </tr>
                         </thead>
+
                         <tbody id="batchTableBody">
                             <tr>
-                                <td colspan="8" class="empty-cell">Belum ada data pengujian batch.</td>
+                                <td colspan="15" class="empty-cell">
+                                    Belum ada data pengujian batch.
+                                </td>
                             </tr>
                         </tbody>
                     </table>
                 </div>
+
             </article>
         </section>
 
@@ -275,7 +287,7 @@
 
                 <!-- Baris 4 -->
                 <div class="recap-item">
-                    <span>Rata-rata Latency</span>
+                    <span>Rata-rata Server Processing Time</span>
                     <strong id="recapAvgLat">0.000 ms</strong>
                 </div>
                 <div class="recap-item">
