@@ -1,4 +1,13 @@
+
 const { performance } = require('perf_hooks');
+
+/**
+ * Konversi nanosecond menjadi millisecond.
+ * Tidak melakukan pembulatan agar presisi tetap terjaga.
+ */
+function nanosecondsToMs(start, end) {
+    return Number(end - start) / 1e6;
+}
 
 /**
  * Mengambil snapshot kondisi proses Node.js.
@@ -9,13 +18,26 @@ function getSystemSnapshot() {
 
     return {
         timestamp: performance.now(),
-        cpu,
-        memory
+        cpuUserMs: cpu.user / 1000,
+        cpuSystemMs: cpu.system / 1000,
+        cpuTotalMs: (cpu.user + cpu.system) / 1000,
+        memory: {
+            rss: memory.rss,
+            heapUsed: memory.heapUsed,
+            heapTotal: memory.heapTotal,
+            external: memory.external
+        }
     };
 }
 
 /**
- * Memulai pengukuran proses backend.
+ * Memulai pengukuran backend.
+ *
+ * Metrik:
+ * - Server Processing Time
+ * - CPU Server
+ * - Memory RSS
+ * - Memory Heap
  */
 function startMeasurement() {
     return {
@@ -26,58 +48,66 @@ function startMeasurement() {
 }
 
 /**
- * Mengakhiri pengukuran proses backend.
- *
- * Mengukur:
- * - Server Processing Time
- * - CPU Time
- * - Memory RSS
- * - Memory Heap
+ * Mengakhiri pengukuran backend.
  */
 function endMeasurement(startMeasurementData) {
+    if (
+        !startMeasurementData ||
+        typeof startMeasurementData.startTime !== 'bigint' ||
+        !startMeasurementData.startCpu
+    ) {
+        throw new Error('Data awal pengukuran tidak valid.');
+    }
+
     const endTime = process.hrtime.bigint();
 
-    const endCpu = process.cpuUsage(startMeasurementData.startCpu);
+    // process.cpuUsage(previousValue) menghasilkan delta
+    // penggunaan CPU sejak snapshot awal, dalam mikrodetik.
+    const cpuDelta = process.cpuUsage(
+        startMeasurementData.startCpu
+    );
+
     const endMemory = process.memoryUsage();
 
-    // Server Processing Time
-    const serverProcessMs = Number(
-        (Number(endTime - startMeasurementData.startTime) / 1e6).toFixed(3)
+    // Server Processing Time (ms)
+    const serverProcessMs = nanosecondsToMs(
+        startMeasurementData.startTime,
+        endTime
     );
 
-    // CPU Time
-    const cpuServerMs = Number(
-        ((endCpu.user + endCpu.system) / 1000).toFixed(6)
-    );
+    // CPU Time (ms)
+    const cpuUserMs = cpuDelta.user / 1000;
+    const cpuSystemMs = cpuDelta.system / 1000;
 
-    // Memory RSS
-    const ramRssMb = Number(
-        (endMemory.rss / 1024 / 1024).toFixed(2)
-    );
+    const cpuServerMs = cpuUserMs + cpuSystemMs;
 
-    // Memory Heap
-    const ramHeapMb = Number(
-        (endMemory.heapUsed / 1024 / 1024).toFixed(2)
-    );
+    // Memory RSS (MB)
+    const ramRssMb = endMemory.rss / (1024 * 1024);
+
+    // Memory Heap (MB)
+    const ramHeapMb = endMemory.heapUsed / (1024 * 1024);
 
     return {
         serverProcessMs,
         cpuServerMs,
+        cpuUserMs,
+        cpuSystemMs,
         ramRssMb,
         ramHeapMb
     };
 }
 
 /**
- * Mengukur waktu suatu operasi synchronous.
+ * Mengukur operasi synchronous.
  */
 function measureCrypto(operation) {
     const start = process.hrtime.bigint();
+
     const result = operation();
+
     const end = process.hrtime.bigint();
-    const cryptoProcessMs = Number(
-        (Number(end - start) / 1e6).toFixed(3)
-    );
+
+    const cryptoProcessMs = nanosecondsToMs(start, end);
 
     return {
         result,
@@ -86,15 +116,16 @@ function measureCrypto(operation) {
 }
 
 /**
- * Mengukur waktu suatu operasi asynchronous.
+ * Mengukur operasi asynchronous.
  */
 async function measureCryptoAsync(operation) {
     const start = process.hrtime.bigint();
+
     const result = await operation();
+
     const end = process.hrtime.bigint();
-    const cryptoProcessMs = Number(
-        (Number(end - start) / 1e6).toFixed(3)
-    );
+
+    const cryptoProcessMs = nanosecondsToMs(start, end);
 
     return {
         result,
@@ -103,19 +134,87 @@ async function measureCryptoAsync(operation) {
 }
 
 /**
- * Membuat snapshot penggunaan memory.
+ * Mengambil penggunaan memory saat ini.
  */
 function getMemoryUsage() {
     const memory = process.memoryUsage();
 
     return {
-        ramRssMb: Number(
-            (memory.rss / 1024 / 1024).toFixed(2)
-        ),
-        ramHeapMb: Number(
-            (memory.heapUsed / 1024 / 1024).toFixed(2)
-        )
+        ramRssMb: memory.rss / (1024 * 1024),
+        ramHeapMb: memory.heapUsed / (1024 * 1024)
     };
+}
+
+// Menyimpan data pengukuran batch yang sedang berjalan.
+let activeBatchMeasurement = null;
+
+/**
+ * Memulai pengukuran CPU dan durasi pada tingkat batch.
+ * Hanya satu batch yang boleh berjalan pada satu waktu.
+ */
+function startBatchMeasurement() {
+    if (activeBatchMeasurement) {
+        throw new Error('Pengukuran batch masih berlangsung.');
+    }
+
+    const batchId = require('crypto').randomUUID();
+
+    activeBatchMeasurement = {
+        batchId,
+        startTime: process.hrtime.bigint(),
+        startCpu: process.cpuUsage()
+    };
+
+    return batchId;
+}
+
+/**
+ * Mengakhiri pengukuran batch.
+ */
+function endBatchMeasurement(batchId) {
+    if (
+        !activeBatchMeasurement ||
+        activeBatchMeasurement.batchId !== batchId
+    ) {
+        throw new Error('Batch ID tidak valid atau pengukuran tidak ditemukan.');
+    }
+
+    const endTime = process.hrtime.bigint();
+
+    const elapsedMs = nanosecondsToMs(
+        activeBatchMeasurement.startTime,
+        endTime
+    );
+
+    const cpuDelta = process.cpuUsage(
+        activeBatchMeasurement.startCpu
+    );
+
+    const cpuUserBatchMs = cpuDelta.user / 1000;
+    const cpuSystemBatchMs = cpuDelta.system / 1000;
+
+    const cpuTimeBatchMs = cpuUserBatchMs + cpuSystemBatchMs;
+
+    const cpuUtilizationBatchPercent =
+        elapsedMs > 0
+            ? (cpuTimeBatchMs / elapsedMs) * 100
+            : 0;
+
+    const memory = process.memoryUsage();
+
+    const result = {
+        batchDurationMs: elapsedMs,
+        cpuUserBatchMs,
+        cpuSystemBatchMs,
+        cpuTimeBatchMs,
+        cpuUtilizationBatchPercent,
+        ramRssMb: memory.rss / (1024 * 1024),
+        ramHeapMb: memory.heapUsed / (1024 * 1024)
+    };
+
+    activeBatchMeasurement = null;
+
+    return result;
 }
 
 module.exports = {
@@ -124,5 +223,7 @@ module.exports = {
     endMeasurement,
     measureCrypto,
     measureCryptoAsync,
-    getMemoryUsage
+    getMemoryUsage,
+    startBatchMeasurement,
+    endBatchMeasurement
 };

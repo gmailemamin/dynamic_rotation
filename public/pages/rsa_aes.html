@@ -4,13 +4,14 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Pengujian RSA-AES Hybrid - Analisis Keamanan & Performa RS-AES</title>
+  <title>Pengujian RSA-AES Hybrid - Analisis Keamanan & Performa RSA-AES</title>
   <script src="/js/auth-guard.js"></script>
   <link rel="stylesheet" href="/css/style.css" />
 </head>
 
 <body class="dashboard-theme">
   <main class="container">
+
     <!-- Breadcrumb & Navigasi Antar Skema -->
     <nav class="subnav-bar" aria-label="Navigasi Skema Pengujian">
       <div class="breadcrumb-trail">
@@ -57,29 +58,35 @@
               Enkripsi Hibrida (RSA-2048 OAEP + AES-256-GCM)
             </span>
             <p class="card-desc top-sm">
-              Mengenkripsi payload pesan dengan AES-256-GCM (IV 12-byte + Auth Tag 16-byte) lalu mengenkripsi session
-              key 32-byte menggunakan RSA-2048 OAEP SHA-256.
+              Mengenkripsi payload pesan dengan AES-256-GCM (IV 12-byte + Auth Tag 16-byte)
+              lalu mengenkripsi session key 32-byte menggunakan RSA-2048 OAEP SHA-256.
             </p>
             <div class="scheme-meta">
-              <span>Tingkat Keamanan: <strong style="color: #c084fc;">Sangat Tinggi (Hybrid AEAD)</strong></span>
+              <span>Tingkat Keamanan:
+                <strong style="color: #c084fc;">Sangat Tinggi (Hybrid AEAD)</strong>
+              </span>
               <span>Score: <strong>9.0/10 (RSA-AES Hybrid)</strong></span>
             </div>
           </div>
         </div>
+
         <button type="button" id="btnLogoutScheme" class="btn-back">
           Logout
         </button>
       </div>
     </section>
 
-    <!-- BARIS 1: Pengujian Manual (Kiri) & Hasil Pengujian Manual (Kanan) -->
+    <!-- BARIS 1: Pengujian Manual -->
     <section class="two-col-grid top-lg">
+
       <article class="panel-card">
         <div class="section-heading">
           <span class="heading-icon">01</span>
           <div>
             <h2>Pengujian Manual</h2>
-            <p class="card-desc">Kirim satu pesan untuk menguji enkripsi &amp; dekripsi RSA-AES Hybrid.</p>
+            <p class="card-desc">
+              Kirim satu pesan untuk menguji enkripsi &amp; dekripsi RSA-AES Hybrid.
+            </p>
           </div>
         </div>
 
@@ -101,7 +108,9 @@
           <span class="heading-icon">&#10003;</span>
           <div>
             <h2>Hasil Pengujian Manual</h2>
-            <p class="card-desc">Detail encrypted session key, IV/tag AES-GCM, ciphertext, dan dekripsi.</p>
+            <p class="card-desc">
+              Detail encrypted session key, IV/tag AES-GCM, ciphertext, dan dekripsi.
+            </p>
           </div>
         </div>
 
@@ -124,33 +133,39 @@
           <span>Status</span>
           <strong id="manualStatus">Siap</strong>
         </div>
+
         <div class="manual-meta-row">
           <span>Waktu Proses</span>
           <strong id="manualTiming">-</strong>
         </div>
+
         <p id="manualSummaryLine" class="helper-text top-sm no-margin">
           Menunggu pengujian manual dijalankan.
         </p>
       </article>
+
     </section>
 
-    <!-- BARIS 2: Pengujian Otomatis / Batch (Kiri) & Hasil Pengujian Otomatis (Kanan) -->
+    <!-- BARIS 2: Pengujian Otomatis / Batch -->
     <section class="two-col-grid top-lg">
+
       <article class="panel-card">
         <div class="section-heading">
           <span class="heading-icon">02</span>
           <div>
             <h2>Pengujian Otomatis (Batch Testing)</h2>
-            <p class="card-desc">Pengiriman pesan otomatis untuk mengukur performa berdasarkan jumlah request.</p>
+            <p class="card-desc">
+              Pengiriman pesan otomatis untuk mengukur performa berdasarkan jumlah request.
+            </p>
           </div>
         </div>
 
         <form id="batchForm">
           <div class="form-grid-2">
+
             <div class="form-group">
               <label for="batchPreset">Jumlah Request (Preset)</label>
               <select id="batchPreset">
-                <option value="50">50 Request</option>
                 <option value="100" selected>100 Request</option>
                 <option value="250">250 Request</option>
                 <option value="500">500 Request</option>
@@ -158,10 +173,12 @@
                 <option value="1000">1000 Request</option>
               </select>
             </div>
+
             <div class="form-group">
               <label for="batchCount">Jumlah Request (Ketik Manual)</label>
               <input type="number" id="batchCount" min="1" max="10000" value="100" />
             </div>
+
           </div>
 
           <div class="form-group">
@@ -190,7 +207,9 @@
           <span class="heading-icon">#</span>
           <div>
             <h2>Hasil Pengujian Otomatis</h2>
-            <p class="card-desc">Detail response time, latensi, throughput, dan metrik server untuk setiap request.</p>
+            <p class="card-desc">
+              Detail response time, latensi, throughput, dan metrik server untuk setiap request.
+            </p>
           </div>
         </div>
 
@@ -199,45 +218,62 @@
             <thead>
               <tr>
                 <th>Request</th>
+                <th>Status HTTP</th>
+                <th>Success</th>
                 <th>Response Time (ms)</th>
-                <th>Latency (ms)</th>
-                <th>Throughput (KB/s)</th>
+                <th>Server Processing Time (ms)</th>
+                <th>Crypto Processing Time (ms)</th>
+                <th>Request Bytes</th>
+                <th>Response Bytes</th>
                 <th>Total Bytes</th>
                 <th>CPU Server (ms)</th>
+                <th>CPU Utilization (%)</th>
                 <th>RAM RSS (MB)</th>
                 <th>RAM Heap (MB)</th>
+                <th>Batch Duration (ms)</th>
+                <th>Request Throughput (req/s)</th>
+                <th>Payload Throughput (KB/s)</th>
               </tr>
             </thead>
+
             <tbody id="batchTableBody">
               <tr>
-                <td colspan="8" class="empty-cell">Belum ada data pengujian batch.</td>
+                <td colspan="16" class="empty-cell">
+                  Belum ada data pengujian batch.
+                </td>
               </tr>
             </tbody>
           </table>
         </div>
       </article>
+
     </section>
 
-    <!-- Rekapitulasi Hasil Batch Lengkap (15 Metrik dalam Grid 3 Kolom) -->
+    <!-- Rekapitulasi Hasil Batch -->
     <section class="panel-card top-lg">
       <div class="section-heading">
         <span class="heading-icon">&#9783;</span>
         <div>
           <h2>Rekapitulasi Hasil Batch</h2>
-          <p class="card-desc">Ringkasan performa pengujian otomatis enkripsi RSA-AES Hybrid.</p>
+          <p class="card-desc">
+            Ringkasan performa pengujian otomatis enkripsi RSA-AES Hybrid.
+          </p>
         </div>
       </div>
 
       <div class="recap-grid-3">
+
         <!-- Baris 1 -->
         <div class="recap-item">
           <span>Total Request</span>
           <strong id="recapTotalReq">0</strong>
         </div>
+
         <div class="recap-item">
           <span>Berhasil</span>
           <strong id="recapSuccessCount">0</strong>
         </div>
+
         <div class="recap-item">
           <span>Gagal</span>
           <strong id="recapFailedCount">0</strong>
@@ -248,10 +284,12 @@
           <span>Rata-rata Response Time</span>
           <strong id="recapAvgResp">0.000 ms</strong>
         </div>
+
         <div class="recap-item">
           <span>Minimum Response Time</span>
           <strong id="recapMinResp">0.000 ms</strong>
         </div>
+
         <div class="recap-item">
           <span>Maksimum Response Time</span>
           <strong id="recapMaxResp">0.000 ms</strong>
@@ -262,10 +300,12 @@
           <span>Total Waktu Pengujian</span>
           <strong id="recapTotalTime">0.000 ms</strong>
         </div>
+
         <div class="recap-item">
           <span>Throughput</span>
           <strong id="recapRps">0.000 request/detik</strong>
         </div>
+
         <div class="recap-item">
           <span>Success Rate</span>
           <strong id="recapSuccessRate">0.00%</strong>
@@ -276,10 +316,12 @@
           <span>Rata-rata Latency</span>
           <strong id="recapAvgLat">0.000 ms</strong>
         </div>
+
         <div class="recap-item">
           <span>Rata-rata Throughput (KB/s)</span>
           <strong id="recapAvgTput">0.000 KB/s</strong>
         </div>
+
         <div class="recap-item">
           <span>Total Bytes</span>
           <strong id="recapTotalBytes">0 bytes</strong>
@@ -287,30 +329,44 @@
 
         <!-- Baris 5 -->
         <div class="recap-item">
-          <span>Rata-rata CPU Server</span>
-          <strong id="recapAvgCpu">0.000 ms</strong>
+          <span>CPU Time Batch</span>
+          <strong id="recapAvgCpu">0.000000 ms</strong>
         </div>
+
+        <div class="recap-item">
+          <span>CPU Utilization</span>
+          <strong id="recapCpuUtil">0.000000%</strong>
+        </div>
+
         <div class="recap-item">
           <span>Rata-rata RAM RSS</span>
           <strong id="recapAvgRss">0.00 MB</strong>
         </div>
+
+        <!-- Baris 6 -->
         <div class="recap-item">
           <span>Rata-rata RAM Heap</span>
           <strong id="recapAvgHeap">0.00 MB</strong>
         </div>
+
       </div>
 
       <div class="recap-footer">
         <div>
-          <strong id="recapFooterStatus" class="text-success" style="display: none;">&#10003; Pengujian batch
-            selesai</strong>
-          <p id="exportInfo" class="helper-text no-margin">Hasil pengujian belum tersedia untuk diunduh.</p>
+          <strong id="recapFooterStatus" class="text-success" style="display: none;">
+            &#10003; Pengujian batch selesai
+          </strong>
+          <p id="exportInfo" class="helper-text no-margin">
+            Hasil pengujian belum tersedia untuk diunduh.
+          </p>
         </div>
+
         <button type="button" id="btnExportCsv" class="btn-primary" disabled>
           &#8595; Unduh Hasil CSV
         </button>
       </div>
     </section>
+
   </main>
 
   <script src="/js/rsa_aes-page.js"></script>

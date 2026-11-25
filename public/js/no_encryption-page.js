@@ -598,7 +598,7 @@ btnDownloadCsv?.addEventListener('click', () => {
       return String(value ?? '');
     }
 
-    return value.toFixed(4).replace('.', ',');
+    return value.toFixed(6).replace('.', ',');
   }
 
   function escapeCsv(value) {

@@ -1,88 +1,120 @@
 const crypto = require('crypto');
-
 const {
     measureCrypto
 } = require('../utils/metrics');
 
 /**
- * Memproses pesan menggunakan AES-256-GCM.
+ * AES-256-GCM Client-Server Service
  *
  * Proses:
- * 1. Generate AES key
- * 2. Generate IV
- * 3. Encrypt plaintext
- * 4. Generate authentication tag
- * 5. Decrypt ciphertext
- * 6. Validasi hasil dekripsi
+ * 1. Client mengirim ciphertext.
+ * 2. Server mendekripsi pesan menggunakan shared AES key.
+ * 3. Server mengenkripsi pesan balasan menggunakan shared key.
+ * 4. Server mengembalikan ciphertext respons.
  */
-function processAES(message) {
-    const plaintext = String(message ?? '');
+
+function validateAESKey(key) {
+    if (!Buffer.isBuffer(key) || key.length !== 32) {
+        throw new Error(
+            'AES-256 key harus berupa Buffer sepanjang 32 byte.'
+        );
+    }
+}
+
+/**
+ * Dekripsi pesan dari client dan enkripsi respons server.
+ */
+function processAES({
+    encryptedMessage,
+    iv,
+    authTag
+}, key) {
+
+    validateAESKey(key);
+
+    if (!encryptedMessage || !iv || !authTag) {
+        throw new Error(
+            'Ciphertext, IV, dan Authentication Tag wajib tersedia.'
+        );
+    }
 
     const result = measureCrypto(() => {
-        // Generate AES-256 key (32 bytes)
-        const key = crypto.randomBytes(32);
 
-        // Generate IV (12 bytes recommended for GCM)
-        const iv = crypto.randomBytes(12);
+        // ==================================
+        // DECRYPTION: CLIENT -> SERVER
+        // ==================================
 
-        // =========================
-        // ENCRYPTION
-        // =========================
-        const cipher = crypto.createCipheriv(
-            'aes-256-gcm',
-            key,
-            iv
+        const ciphertextBuffer = Buffer.from(
+            encryptedMessage,
+            'base64'
         );
 
-        const encryptedBuffer = Buffer.concat([
-            cipher.update(plaintext, 'utf8'),
-            cipher.final()
-        ]);
+        const ivBuffer = Buffer.from(iv, 'base64');
+        const authTagBuffer = Buffer.from(
+            authTag,
+            'base64'
+        );
 
-        const authTag = cipher.getAuthTag();
+        if (
+            ivBuffer.length !== 12 ||
+            authTagBuffer.length !== 16
+        ) {
+            throw new Error(
+                'Format IV atau Authentication Tag tidak valid.'
+            );
+        }
 
-        // =========================
-        // DECRYPTION
-        // =========================
         const decipher = crypto.createDecipheriv(
             'aes-256-gcm',
             key,
-            iv
+            ivBuffer
         );
 
-        decipher.setAuthTag(authTag);
+        decipher.setAuthTag(authTagBuffer);
 
         const decryptedBuffer = Buffer.concat([
-            decipher.update(encryptedBuffer),
+            decipher.update(ciphertextBuffer),
             decipher.final()
         ]);
 
         const decryptedMessage = decryptedBuffer.toString('utf8');
 
+        // ==================================
+        // ENCRYPTION: SERVER -> CLIENT
+        // ==================================
+
+        const responseIV = crypto.randomBytes(12);
+        const cipher = crypto.createCipheriv(
+            'aes-256-gcm',
+            key,
+            responseIV
+        );
+
+        const responseBuffer = Buffer.concat([
+            cipher.update(decryptedMessage, 'utf8'),
+            cipher.final()
+        ]);
+
+        const responseAuthTag = cipher.getAuthTag();
+
         return {
-            encryptedBuffer,
-            iv,
-            authTag,
-            decryptedMessage
+            decryptedMessage,
+
+            encryptedResponse: responseBuffer.toString('base64'),
+            responseIV: responseIV.toString('base64'),
+            responseAuthTag: responseAuthTag.toString('base64')
         };
     });
 
-    const cryptoResult = result.result;
-
-    // Validasi hasil dekripsi
-    const isVerified = cryptoResult.decryptedMessage === plaintext;
-
     return {
         method: 'aes',
-        encrypted: true,
         algorithm: 'AES-256-GCM',
 
-        encryptedMessage: cryptoResult.encryptedBuffer.toString('base64'),
-        iv: cryptoResult.iv.toString('base64'),
-        authTag: cryptoResult.authTag.toString('base64'),
-
-        decryptedMessage: cryptoResult.decryptedMessage,
-        verified: isVerified,
+        decryptedMessage: result.result.decryptedMessage,
+        encryptedResponse: result.result.encryptedResponse,
+        responseIV: result.result.responseIV,
+        responseAuthTag: result.result.responseAuthTag,
+        verified: true,
 
         cryptoProcessMs: result.cryptoProcessMs
     };

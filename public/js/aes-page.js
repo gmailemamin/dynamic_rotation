@@ -109,18 +109,158 @@ batchCountInput?.addEventListener('input', () => {
     batchPresetSelect.value = matchingOption ? value : '';
 });
 
+// ==========================================
+// AES-256-GCM CLIENT CRYPTOGRAPHY
+// ==========================================
+
+// Mengubah Base64 menjadi Uint8Array
+function base64ToBytes(base64) {
+    const binary = atob(base64);
+
+    return Uint8Array.from(
+        binary,
+        character => character.charCodeAt(0)
+    );
+}
+
+// Mengubah Uint8Array menjadi Base64
+function bytesToBase64(bytes) {
+    let binary = '';
+
+    const chunkSize = 0x8000;
+
+    for (let i = 0; i < bytes.length; i += chunkSize) {
+        const chunk = bytes.subarray(i, i + chunkSize);
+        binary += String.fromCharCode(...chunk);
+    }
+
+    return btoa(binary);
+}
+
+// Membaca AES key dari localStorage
+async function getAESKey() {
+    const encodedKey = localStorage.getItem('AES_SHARED_KEY');
+
+    if (!encodedKey) {
+        throw new Error(
+            'AES key belum tersedia di browser. Lakukan provisioning terlebih dahulu.'
+        );
+    }
+
+    const rawKey = base64ToBytes(encodedKey);
+
+    if (
+        rawKey.length !== 32 ||
+        bytesToBase64(rawKey) !== encodedKey
+    ) {
+        throw new Error('Format AES key tidak valid.');
+    }
+
+    return window.crypto.subtle.importKey(
+        'raw',
+        rawKey,
+        {
+            name: 'AES-GCM'
+        },
+        false,
+        ['encrypt', 'decrypt']
+    );
+}
+
+// Enkripsi pesan client
+async function encryptAESMessage(message) {
+    const key = await getAESKey();
+
+    const iv = window.crypto.getRandomValues(
+        new Uint8Array(12)
+    );
+
+    const plaintext = new TextEncoder().encode(message);
+
+    // Web Crypto AES-GCM menghasilkan ciphertext + tag
+    const encryptedBuffer = await window.crypto.subtle.encrypt(
+        {
+            name: 'AES-GCM',
+            iv,
+            tagLength: 128
+        },
+        key,
+        plaintext
+    );
+
+    const encryptedBytes = new Uint8Array(encryptedBuffer);
+
+    // Pisahkan 16 byte terakhir sebagai Authentication Tag
+    const ciphertext = encryptedBytes.slice(0, -16);
+    const authTag = encryptedBytes.slice(-16);
+
+    return {
+        encryptedMessage: bytesToBase64(ciphertext),
+        iv: bytesToBase64(iv),
+        authTag: bytesToBase64(authTag)
+    };
+}
+
+// Dekripsi respons server
+async function decryptAESMessage({
+    encryptedMessage,
+    iv,
+    authTag
+}) {
+    const key = await getAESKey();
+
+    const ciphertext = base64ToBytes(encryptedMessage);
+    const ivBytes = base64ToBytes(iv);
+    const authTagBytes = base64ToBytes(authTag);
+
+    if (ivBytes.length !== 12 || authTagBytes.length !== 16) {
+        throw new Error('IV atau Authentication Tag respons tidak valid.');
+    }
+
+    // Gabungkan ciphertext dan Authentication Tag
+    const combined = new Uint8Array(
+        ciphertext.length + authTagBytes.length
+    );
+
+    combined.set(ciphertext, 0);
+    combined.set(authTagBytes, ciphertext.length);
+
+    const decryptedBuffer = await window.crypto.subtle.decrypt(
+        {
+            name: 'AES-GCM',
+            iv: ivBytes,
+            tagLength: 128
+        },
+        key,
+        combined
+    );
+
+    return new TextDecoder().decode(decryptedBuffer);
+}
+
+// REQUEST FUNCTION
 // REQUEST FUNCTION
 async function sendMessageRequest(messageText, seq = null) {
+
+    // 1. Enkripsi pesan di client
+    const encrypted = await encryptAESMessage(messageText);
+
+    // 2. Siapkan payload ciphertext
     const payload = {
         seq,
-        message: messageText,
+        encryptedMessage: encrypted.encryptedMessage,
+        iv: encrypted.iv,
+        authTag: encrypted.authTag,
         sentAt: new Date().toISOString()
     };
 
     const requestBody = JSON.stringify(payload);
-    const requestBytes = new TextEncoder().encode(requestBody).length;
 
-    // Response Time dimulai sebelum request dikirim
+    const requestBytes = new TextEncoder().encode(
+        requestBody
+    ).length;
+
+    // 3. Mulai pengukuran Response Time
     const t0 = performance.now();
 
     const response = await fetch('/api/aes/message', {
@@ -131,14 +271,16 @@ async function sendMessageRequest(messageText, seq = null) {
         body: requestBody
     });
 
-    // Membaca seluruh response body
+    // 4. Baca seluruh response body
     const responseBuffer = await response.arrayBuffer();
 
-    // Response Time berakhir setelah seluruh body diterima
     const t1 = performance.now();
 
     const responseBytes = responseBuffer.byteLength;
-    const responseText = new TextDecoder().decode(responseBuffer);
+
+    const responseText = new TextDecoder().decode(
+        responseBuffer
+    );
 
     let data;
 
@@ -149,21 +291,37 @@ async function sendMessageRequest(messageText, seq = null) {
     }
 
     if (!response.ok) {
-        throw new Error(data?.error || `HTTP ${response.status}`);
+        throw new Error(
+            data?.error || `HTTP ${response.status}`
+        );
     }
 
-    const responseTimeMs = Number((t1 - t0).toFixed(3));
+    // 5. Ambil ciphertext respons server
+    const cryptoData = data?.crypto ?? {};
 
-    const crypto = data?.crypto ?? {};
+    if (
+        typeof cryptoData.encryptedMessage !== 'string' ||
+        typeof cryptoData.iv !== 'string' ||
+        typeof cryptoData.authTag !== 'string'
+    ) {
+        throw new Error('Format respons AES dari server tidak valid.');
+    }
 
-    const cryptoProcessMs = Number(
-        data?.metrics?.cryptoProcessMs ??
-        crypto.cryptoProcessMs ??
-        0
-    );
+    // 6. Dekripsi respons di client
+    const decryptedMessage = await decryptAESMessage({
+        encryptedMessage: cryptoData.encryptedMessage,
+        iv: cryptoData.iv,
+        authTag: cryptoData.authTag
+    });
 
-    const serverProcessingMs = Number(
-        data?.metrics?.serverProcessMs ?? 0
+    // 7. Verifikasi hasil dekripsi
+    const verified =
+        decryptedMessage === messageText &&
+        cryptoData.verified === true;
+
+    // 8. Hitung metrik
+    const responseTimeMs = Number(
+        (t1 - t0).toFixed(3)
     );
 
     const totalBytes = requestBytes + responseBytes;
@@ -175,25 +333,39 @@ async function sendMessageRequest(messageText, seq = null) {
         ok: response.ok,
 
         responseTimeMs,
-        serverProcessingMs,
-        cryptoProcessMs,
+
+        serverProcessingMs: Number(
+            data?.metrics?.serverProcessMs ?? 0
+        ),
+
+        cryptoProcessMs: Number(
+            data?.metrics?.cryptoProcessMs ?? 0
+        ),
 
         requestBytes,
         responseBytes,
         totalBytes,
 
-        cpuServerMs: Number(data?.metrics?.cpuServerMs ?? 0),
-        ramRssMb: Number(data?.metrics?.ramRssMb ?? 0),
-        ramHeapMb: Number(data?.metrics?.ramHeapMb ?? 0),
+        cpuServerMs: Number(
+            data?.metrics?.cpuServerMs ?? 0
+        ),
 
-        iv: crypto.iv ?? '',
-        authTag: crypto.authTag ?? '',
-        encryptedMessage: crypto.encryptedMessage ?? '',
-        decryptedMessage: crypto.decryptedMessage ?? '',
+        ramRssMb: Number(
+            data?.metrics?.ramRssMb ?? 0
+        ),
 
-        verified: crypto.verified === true,
+        ramHeapMb: Number(
+            data?.metrics?.ramHeapMb ?? 0
+        ),
 
-        echoMessage: data?.echoMessage ?? ''
+        iv: cryptoData.iv,
+        authTag: cryptoData.authTag,
+        encryptedMessage: cryptoData.encryptedMessage,
+
+        decryptedMessage,
+        verified,
+
+        echoMessage: decryptedMessage
     };
 }
 
@@ -293,7 +465,7 @@ function renderBatchTable(rows) {
             <td>${row.requestBytes ?? 0}</td>
             <td>${row.responseBytes ?? 0}</td>
             <td>${row.totalBytes ?? 0}</td>
-            <td>${formatNumber(row.cpuServerMs)}</td>
+            <td>${formatNumber(row.cpuServerMs, 6)}</td>
             <td>${formatNumber(row.ramRssMb, 2)}</td>
             <td>${formatNumber(row.ramHeapMb, 2)}</td>
             <td>${formatNumber(durationMs)}</td>
@@ -596,7 +768,7 @@ btnExportCsv?.addEventListener('click', () => {
             return String(value ?? '');
         }
 
-        return value.toFixed(4).replace('.', ',');
+        return value.toFixed(6).replace('.', ',');
     }
 
     function escapeCsv(value) {

@@ -116,7 +116,7 @@
                 </div>
 
                 <div class="form-group">
-                    <label>Pesan Hasil Dekripsi Server</label>
+                    <label>Pesan Hasil Dekripsi Client</label>
                     <div id="rsaDecryptedBox" class="readonly-box">-</div>
                 </div>
 
@@ -192,8 +192,10 @@
                     <span class="heading-icon">#</span>
                     <div>
                         <h2>Hasil Pengujian Otomatis</h2>
-                        <p class="card-desc">Detail response time, latensi, throughput, dan metrik server untuk setiap
-                            request.</p>
+                        <p class="card-desc">
+                            Detail response time, server processing time, throughput,
+                            dan metrik server untuk setiap request.
+                        </p>
                     </div>
                 </div>
 
@@ -202,18 +204,25 @@
                         <thead>
                             <tr>
                                 <th>Request</th>
+                                <th>Status HTTP</th>
+                                <th>Success</th>
                                 <th>Response Time (ms)</th>
-                                <th>Latency (ms)</th>
-                                <th>Throughput (KB/s)</th>
+                                <th>Server Processing Time (ms)</th>
+                                <th>Crypto Processing Time (ms)</th>
+                                <th>Request Bytes</th>
+                                <th>Response Bytes</th>
                                 <th>Total Bytes</th>
                                 <th>CPU Server (ms)</th>
                                 <th>RAM RSS (MB)</th>
                                 <th>RAM Heap (MB)</th>
+                                <th>Batch Duration (ms)</th>
+                                <th>Request Throughput (req/s)</th>
+                                <th>Payload Throughput (KB/s)</th>
                             </tr>
                         </thead>
                         <tbody id="batchTableBody">
                             <tr>
-                                <td colspan="8" class="empty-cell">Belum ada data pengujian batch.</td>
+                                <td colspan="15" class="empty-cell">Belum ada data pengujian batch.</td>
                             </tr>
                         </tbody>
                     </table>
@@ -276,11 +285,11 @@
 
                 <!-- Baris 4 -->
                 <div class="recap-item">
-                    <span>Rata-rata Latency</span>
+                    <span>Rata-rata Server Processing Time</span>
                     <strong id="recapAvgLat">0.000 ms</strong>
                 </div>
                 <div class="recap-item">
-                    <span>Rata-rata Throughput (KB/s)</span>
+                    <span>Rata-rata Payload Throughput (KB/s)</span>
                     <strong id="recapAvgTput">0.000 KB/s</strong>
                 </div>
                 <div class="recap-item">
