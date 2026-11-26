@@ -1,19 +1,24 @@
+
 <!DOCTYPE html>
 <html lang="id" data-require-scheme="rsa-aes-hybrid">
 
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Pengujian RSA-AES Hybrid - Analisis Keamanan & Performa RSA-AES</title>
+
+  <title>Pengujian RSA-AES Hybrid - Analisis Keamanan & Performa</title>
+
   <script src="/js/auth-guard.js"></script>
   <link rel="stylesheet" href="/css/style.css" />
 </head>
 
 <body class="dashboard-theme">
+
   <main class="container">
 
-    <!-- Breadcrumb & Navigasi Antar Skema -->
+    <!-- NAVIGASI -->
     <nav class="subnav-bar" aria-label="Navigasi Skema Pengujian">
+
       <div class="breadcrumb-trail">
         <a href="/index.html">Beranda</a>
         <span>/</span>
@@ -23,198 +28,521 @@
       </div>
 
       <div class="scheme-pills">
+
         <a class="scheme-pill" href="/pages/no_encryption.html">
           <span class="dot dot-red"></span>
           No Encryption
         </a>
+
         <a class="scheme-pill" href="/pages/aes.html">
           <span class="dot dot-blue"></span>
           AES-256-GCM
         </a>
+
         <a class="scheme-pill" href="/pages/rsa.html">
           <span class="dot dot-amber"></span>
           RSA-OAEP
         </a>
+
         <a class="scheme-pill is-active" href="/pages/rsa_aes.html">
           <span class="dot dot-purple"></span>
           RSA-AES Hybrid
         </a>
+
         <a class="scheme-pill" href="/pages/rsa_aes_dynamicRotation.html">
           <span class="dot dot-green"></span>
           Dynamic Rotation
         </a>
+
       </div>
     </nav>
 
-    <!-- Header Skema -->
+
+    <!-- HEADER SKEMA -->
     <section class="panel-card scheme-header-card">
+
       <div class="scheme-header-top">
+
         <div class="scheme-title-group">
+
           <div class="scheme-icon-box">HYB</div>
+
           <div>
+
             <h1>Pengujian RSA-AES Hybrid</h1>
-            <span class="badge-danger"
-              style="background-color: rgba(168, 85, 247, 0.14); color: #d8b4fe; border-color: rgba(168, 85, 247, 0.4);">
+
+            <span
+              class="badge-danger"
+              style="
+                background-color: rgba(168, 85, 247, 0.14);
+                color: #d8b4fe;
+                border-color: rgba(168, 85, 247, 0.4);
+              "
+            >
               Enkripsi Hibrida (RSA-2048 OAEP + AES-256-GCM)
             </span>
+
             <p class="card-desc top-sm">
-              Mengenkripsi payload pesan dengan AES-256-GCM (IV 12-byte + Auth Tag 16-byte)
-              lalu mengenkripsi session key 32-byte menggunakan RSA-2048 OAEP SHA-256.
+              Mengenkripsi payload pesan menggunakan AES-256-GCM
+              (IV 12-byte + Auth Tag 16-byte), kemudian mendistribusikan
+              AES session key menggunakan RSA-2048 OAEP SHA-256.
             </p>
+
             <div class="scheme-meta">
-              <span>Tingkat Keamanan:
-                <strong style="color: #c084fc;">Sangat Tinggi (Hybrid AEAD)</strong>
+
+              <span>
+                Tingkat Keamanan:
+                <strong style="color: #c084fc;">
+                  Hybrid AEAD
+                </strong>
               </span>
-              <span>Score: <strong>9.0/10 (RSA-AES Hybrid)</strong></span>
+
+              <span>
+                Algoritma:
+                <strong>RSA-2048 + AES-256-GCM</strong>
+              </span>
+
             </div>
+
           </div>
         </div>
 
-        <button type="button" id="btnLogoutScheme" class="btn-back">
+        <button
+          type="button"
+          id="btnLogoutScheme"
+          class="btn-back"
+        >
           Logout
         </button>
+
       </div>
     </section>
 
-    <!-- BARIS 1: Pengujian Manual -->
+
+    <!-- ====================================== -->
+    <!-- 01. MANAJEMEN SECURE SESSION -->
+    <!-- ====================================== -->
+
+    <section class="panel-card top-lg">
+
+      <div class="section-heading">
+
+        <span class="heading-icon">01</span>
+
+        <div>
+          <h2>Manajemen Secure Session</h2>
+
+          <p class="card-desc">
+            Bentuk secure session sebelum memulai komunikasi
+            menggunakan RSA-AES Hybrid.
+          </p>
+        </div>
+
+      </div>
+
+
+      <!-- STATUS SESSION -->
+
+      <div
+        class="panel-card"
+        style="
+          background: rgba(148, 163, 184, 0.06);
+          margin-bottom: 18px;
+        "
+      >
+
+        <div class="manual-meta-row">
+
+          <span>Status Secure Session</span>
+
+          <strong
+            id="hybridSessionBadge"
+            class="badge-danger"
+          >
+            Inactive
+          </strong>
+
+        </div>
+
+        <div class="top-sm">
+
+          <h3 id="hybridSessionStatus">
+            Session Belum Aktif
+          </h3>
+
+          <p
+            id="hybridSessionDescription"
+            class="card-desc"
+          >
+            Belum ada sesi komunikasi yang terbentuk.
+            Aktifkan secure session untuk memulai pengujian.
+          </p>
+
+        </div>
+
+      </div>
+
+
+      <!-- INFORMASI SESSION -->
+
+      <div class="recap-grid-3">
+
+        <div class="recap-item">
+          <span>Key Exchange Algorithm</span>
+          <strong id="hybridSessionAlgorithm">
+            RSA-2048 OAEP SHA-256
+          </strong>
+        </div>
+
+        <div class="recap-item">
+          <span>Data Encryption Algorithm</span>
+          <strong>AES-256-GCM</strong>
+        </div>
+
+        <div class="recap-item">
+          <span>Session Key Length</span>
+          <strong>256 bit</strong>
+        </div>
+
+        <div class="recap-item">
+          <span>Session ID</span>
+          <strong
+            id="hybridSessionId"
+            style="word-break: break-all;"
+          >
+            Belum tersedia
+          </strong>
+        </div>
+
+        <div class="recap-item">
+          <span>Session Key Status</span>
+          <strong id="hybridSessionKeyStatus">
+            Belum dibentuk
+          </strong>
+        </div>
+
+      </div>
+
+
+      <!-- TOMBOL AKTIVASI / TERMINASI -->
+
+      <div class="top-lg">
+
+        <button
+          type="button"
+          id="btnToggleSession"
+          class="btn-primary btn-full"
+        >
+          Aktifkan Secure Session
+        </button>
+
+        <p
+          id="hybridSessionMessage"
+          class="helper-text top-sm no-margin"
+        >
+          Klik tombol untuk membentuk secure session
+          antara client dan server.
+        </p>
+
+      </div>
+
+    </section>
+
+
+    <!-- ====================================== -->
+    <!-- 02. PENGUJIAN MANUAL -->
+    <!-- ====================================== -->
+
     <section class="two-col-grid top-lg">
 
       <article class="panel-card">
+
         <div class="section-heading">
-          <span class="heading-icon">01</span>
+
+          <span class="heading-icon">02</span>
+
           <div>
             <h2>Pengujian Manual</h2>
+
             <p class="card-desc">
-              Kirim satu pesan untuk menguji enkripsi &amp; dekripsi RSA-AES Hybrid.
+              Kirim satu pesan untuk menguji enkripsi dan
+              dekripsi RSA-AES Hybrid.
             </p>
           </div>
+
         </div>
+
 
         <form id="manualForm">
+
           <div class="form-group">
-            <label for="manualMessage">Pesan</label>
-            <textarea id="manualMessage"
-              rows="5">Halo server, ini uji enkripsi RSA-AES Hybrid (RSA-2048 OAEP + AES-256-GCM).</textarea>
+
+            <label for="manualMessage">
+              Pesan
+            </label>
+
+            <textarea
+              id="manualMessage"
+              rows="5"
+            >Halo server, ini uji enkripsi RSA-AES Hybrid (RSA-2048 OAEP + AES-256-GCM).</textarea>
+
           </div>
 
-          <button type="submit" id="btnManualSend" class="btn-primary btn-full">
+          <button
+            type="submit"
+            id="btnManualSend"
+            class="btn-primary btn-full"
+            disabled
+          >
             &#10148; Kirim &amp; Uji RSA-AES Hybrid
           </button>
+
         </form>
+
       </article>
 
+
+      <!-- HASIL PENGUJIAN MANUAL -->
+
       <article class="panel-card">
+
         <div class="section-heading">
+
           <span class="heading-icon">&#10003;</span>
+
           <div>
             <h2>Hasil Pengujian Manual</h2>
+
             <p class="card-desc">
-              Detail encrypted session key, IV/tag AES-GCM, ciphertext, dan dekripsi.
+              Detail encrypted session key, IV, authentication tag,
+              ciphertext, dan hasil dekripsi.
             </p>
           </div>
+
         </div>
 
-        <div class="form-group">
-          <label>Encrypted Session Key (RSA-2048 OAEP Hex)</label>
-          <div id="hybridKeyBox" class="readonly-box">-</div>
-        </div>
 
         <div class="form-group">
-          <label>IV / Nonce (12-byte Hex) &amp; Auth Tag (16-byte Hex)</label>
-          <div id="hybridIvTagBox" class="readonly-box">IV: - | Tag: -</div>
+
+          <label>
+            Encrypted Session Key (RSA-2048 OAEP Hex)
+          </label>
+
+          <div
+            id="hybridKeyBox"
+            class="readonly-box"
+          >
+            -
+          </div>
+
         </div>
 
+
         <div class="form-group">
-          <label>Ciphertext Payload (Hex) &amp; Hasil Dekripsi</label>
-          <div id="hybridCipherBox" class="readonly-box">-</div>
+
+          <label>
+            IV / Nonce (12-byte Hex) &amp; Auth Tag (16-byte Hex)
+          </label>
+
+          <div
+            id="hybridIvTagBox"
+            class="readonly-box"
+          >
+            IV: - | Tag: -
+          </div>
+
         </div>
+
+
+        <div class="form-group">
+
+          <label>
+            Ciphertext Payload (Hex) &amp; Hasil Dekripsi
+          </label>
+
+          <div
+            id="hybridCipherBox"
+            class="readonly-box"
+          >
+            -
+          </div>
+
+        </div>
+
 
         <div class="manual-meta-row">
           <span>Status</span>
-          <strong id="manualStatus">Siap</strong>
+          <strong id="manualStatus">
+            Menunggu Secure Session
+          </strong>
         </div>
+
 
         <div class="manual-meta-row">
           <span>Waktu Proses</span>
           <strong id="manualTiming">-</strong>
         </div>
 
-        <p id="manualSummaryLine" class="helper-text top-sm no-margin">
-          Menunggu pengujian manual dijalankan.
+
+        <p
+          id="manualSummaryLine"
+          class="helper-text top-sm no-margin"
+        >
+          Aktifkan secure session sebelum melakukan pengujian manual.
         </p>
+
       </article>
 
     </section>
 
-    <!-- BARIS 2: Pengujian Otomatis / Batch -->
+
+    <!-- ====================================== -->
+    <!-- 03. PENGUJIAN OTOMATIS / BATCH -->
+    <!-- ====================================== -->
+
     <section class="two-col-grid top-lg">
 
       <article class="panel-card">
+
         <div class="section-heading">
-          <span class="heading-icon">02</span>
+
+          <span class="heading-icon">03</span>
+
           <div>
             <h2>Pengujian Otomatis (Batch Testing)</h2>
+
             <p class="card-desc">
-              Pengiriman pesan otomatis untuk mengukur performa berdasarkan jumlah request.
+              Pengiriman pesan otomatis untuk mengukur performa
+              berdasarkan jumlah request.
             </p>
           </div>
+
         </div>
 
+
         <form id="batchForm">
+
           <div class="form-grid-2">
 
             <div class="form-group">
-              <label for="batchPreset">Jumlah Request (Preset)</label>
+
+              <label for="batchPreset">
+                Jumlah Request (Preset)
+              </label>
+
               <select id="batchPreset">
+
                 <option value="100" selected>100 Request</option>
                 <option value="250">250 Request</option>
                 <option value="500">500 Request</option>
                 <option value="750">750 Request</option>
                 <option value="1000">1000 Request</option>
+
               </select>
+
             </div>
+
 
             <div class="form-group">
-              <label for="batchCount">Jumlah Request (Ketik Manual)</label>
-              <input type="number" id="batchCount" min="1" max="10000" value="100" />
+
+              <label for="batchCount">
+                Jumlah Request (Ketik Manual)
+              </label>
+
+              <input
+                type="number"
+                id="batchCount"
+                min="1"
+                max="10000"
+                value="100"
+              />
+
             </div>
 
           </div>
 
+
           <div class="form-group">
-            <label for="batchPrefix">Pesan Pengujian</label>
-            <textarea id="batchPrefix" rows="3">Halo server, ini pesan pengujian batch RSA-AES Hybrid.</textarea>
+
+            <label for="batchPrefix">
+              Pesan Pengujian
+            </label>
+
+            <textarea
+              id="batchPrefix"
+              rows="3"
+            >Halo server, ini pesan pengujian batch RSA-AES Hybrid.</textarea>
+
           </div>
 
-          <button type="submit" id="btnBatchStart" class="btn-primary btn-full">
+
+          <button
+            type="submit"
+            id="btnBatchStart"
+            class="btn-primary btn-full"
+            disabled
+          >
             &#9654; Mulai Batch Testing
           </button>
+
         </form>
 
+
+        <!-- PROGRESS -->
+
         <div class="progress-box">
+
           <div class="progress-header">
-            <span id="batchStatusText">Status: Menunggu pengujian</span>
-            <span id="progressText">0 / 0</span>
+
+            <span id="batchStatusText">
+              Status: Menunggu pengujian
+            </span>
+
+            <span id="progressText">
+              0 / 0
+            </span>
+
           </div>
+
           <div class="progress-track">
-            <div id="progressFill" class="progress-fill" style="width: 0%;"></div>
+
+            <div
+              id="progressFill"
+              class="progress-fill"
+              style="width: 0%;"
+            ></div>
+
           </div>
+
         </div>
+
       </article>
 
+
+      <!-- HASIL BATCH -->
+
       <article class="panel-card">
+
         <div class="section-heading">
+
           <span class="heading-icon">#</span>
+
           <div>
             <h2>Hasil Pengujian Otomatis</h2>
+
             <p class="card-desc">
-              Detail response time, latensi, throughput, dan metrik server untuk setiap request.
+              Detail response time, latency, throughput,
+              dan metrik penggunaan sumber daya server.
             </p>
           </div>
+
         </div>
 
+
         <div class="table-wrap">
+
           <table class="result-table">
+
             <thead>
               <tr>
                 <th>Request</th>
@@ -236,34 +564,55 @@
               </tr>
             </thead>
 
+
             <tbody id="batchTableBody">
+
               <tr>
                 <td colspan="16" class="empty-cell">
                   Belum ada data pengujian batch.
                 </td>
               </tr>
+
             </tbody>
+
           </table>
+
         </div>
+
       </article>
 
     </section>
 
-    <!-- Rekapitulasi Hasil Batch -->
+
+    <!-- ====================================== -->
+    <!-- 04. REKAPITULASI HASIL BATCH -->
+    <!-- ====================================== -->
+
     <section class="panel-card top-lg">
+
       <div class="section-heading">
+
         <span class="heading-icon">&#9783;</span>
+
         <div>
+
           <h2>Rekapitulasi Hasil Batch</h2>
+
           <p class="card-desc">
-            Ringkasan performa pengujian otomatis enkripsi RSA-AES Hybrid.
+            Ringkasan performa pengujian otomatis
+            enkripsi RSA-AES Hybrid.
           </p>
+
         </div>
+
       </div>
+
 
       <div class="recap-grid-3">
 
-        <!-- Baris 1 -->
+
+        <!-- BARIS 1 -->
+
         <div class="recap-item">
           <span>Total Request</span>
           <strong id="recapTotalReq">0</strong>
@@ -279,7 +628,9 @@
           <strong id="recapFailedCount">0</strong>
         </div>
 
-        <!-- Baris 2 -->
+
+        <!-- BARIS 2 -->
+
         <div class="recap-item">
           <span>Rata-rata Response Time</span>
           <strong id="recapAvgResp">0.000 ms</strong>
@@ -295,7 +646,9 @@
           <strong id="recapMaxResp">0.000 ms</strong>
         </div>
 
-        <!-- Baris 3 -->
+
+        <!-- BARIS 3 -->
+
         <div class="recap-item">
           <span>Total Waktu Pengujian</span>
           <strong id="recapTotalTime">0.000 ms</strong>
@@ -311,7 +664,9 @@
           <strong id="recapSuccessRate">0.00%</strong>
         </div>
 
-        <!-- Baris 4 -->
+
+        <!-- BARIS 4 -->
+
         <div class="recap-item">
           <span>Rata-rata Latency</span>
           <strong id="recapAvgLat">0.000 ms</strong>
@@ -327,7 +682,9 @@
           <strong id="recapTotalBytes">0 bytes</strong>
         </div>
 
-        <!-- Baris 5 -->
+
+        <!-- BARIS 5 -->
+
         <div class="recap-item">
           <span>CPU Time Batch</span>
           <strong id="recapAvgCpu">0.000000 ms</strong>
@@ -343,7 +700,9 @@
           <strong id="recapAvgRss">0.00 MB</strong>
         </div>
 
-        <!-- Baris 6 -->
+
+        <!-- BARIS 6 -->
+
         <div class="recap-item">
           <span>Rata-rata RAM Heap</span>
           <strong id="recapAvgHeap">0.00 MB</strong>
@@ -351,25 +710,50 @@
 
       </div>
 
+
+      <!-- FOOTER REKAP -->
+
       <div class="recap-footer">
+
         <div>
-          <strong id="recapFooterStatus" class="text-success" style="display: none;">
+
+          <strong
+            id="recapFooterStatus"
+            class="text-success"
+            style="display: none;"
+          >
             &#10003; Pengujian batch selesai
           </strong>
-          <p id="exportInfo" class="helper-text no-margin">
+
+          <p
+            id="exportInfo"
+            class="helper-text no-margin"
+          >
             Hasil pengujian belum tersedia untuk diunduh.
           </p>
+
         </div>
 
-        <button type="button" id="btnExportCsv" class="btn-primary" disabled>
+
+        <button
+          type="button"
+          id="btnExportCsv"
+          class="btn-primary"
+          disabled
+        >
           &#8595; Unduh Hasil CSV
         </button>
+
       </div>
+
     </section>
 
   </main>
 
-  <script src="/js/rsa_aes-page.js"></script>
-</body>
 
+  <!-- JAVASCRIPT -->
+
+  <script src="/js/rsa_aes-page.js"></script>
+
+</body>
 </html>

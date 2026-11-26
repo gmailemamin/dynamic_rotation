@@ -2,474 +2,932 @@
 <html lang="id" data-require-scheme="dynamic-rotation">
 
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Pengujian Dynamic Rotation - Analisis Keamanan & Performa RS-AES</title>
-  <script src="/js/auth-guard.js"></script>
-  <link rel="stylesheet" href="/css/style.css" />
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <title>Pengujian Dynamic Rotation - Analisis Keamanan & Performa RSA-AES</title>
+
+    <script src="/js/auth-guard.js"></script>
+    <link rel="stylesheet" href="/css/style.css" />
 </head>
 
 <body class="dashboard-theme">
-  <main class="container">
-    <!-- Breadcrumb & Navigasi Antar Skema -->
-    <nav class="subnav-bar" aria-label="Navigasi Skema Pengujian">
-      <div class="breadcrumb-trail">
-        <a href="/index.html">Beranda</a>
-        <span>/</span>
-        <span>Skema Pengujian</span>
-        <span>/</span>
-        <span class="current-crumb">Dynamic Rotation</span>
-      </div>
 
-      <div class="scheme-pills">
-        <a class="scheme-pill" href="/pages/no_encryption.html">
-          <span class="dot dot-red"></span>
-          No Encryption
-        </a>
-        <a class="scheme-pill" href="/pages/aes.html">
-          <span class="dot dot-blue"></span>
-          AES-256-GCM
-        </a>
-        <a class="scheme-pill" href="/pages/rsa.html">
-          <span class="dot dot-amber"></span>
-          RSA-OAEP
-        </a>
-        <a class="scheme-pill" href="/pages/rsa_aes.html">
-          <span class="dot dot-purple"></span>
-          RSA-AES Hybrid
-        </a>
-        <a class="scheme-pill is-active" href="/pages/rsa_aes_dynamicRotation.html">
-          <span class="dot dot-green"></span>
-          Dynamic Rotation
-        </a>
-      </div>
-    </nav>
+    <main class="container">
 
-    <!-- Header Skema -->
-    <section class="panel-card scheme-header-card">
-      <div class="scheme-header-top">
-        <div class="scheme-title-group">
-          <div class="scheme-icon-box">ROT</div>
-          <div>
-            <h1>Pengujian Dynamic Session Key Rotation</h1>
-            <span class="badge-danger"
-              style="background-color: rgba(34, 197, 94, 0.14); color: #86efac; border-color: rgba(34, 197, 94, 0.4);">
-              Rotasi Kunci Sesi Dinamis (RSA-2048 OAEP + AES-256-GCM)
-            </span>
-            <p class="card-desc top-sm">
-              Mengenkripsi payload dengan AES-256-GCM dan membungkus session key memakai RSA-2048 OAEP dengan rotasi
-              kunci otomatis berdasarkan jumlah pesan atau interval waktu.
-            </p>
-            <div class="scheme-meta">
-              <span>Tingkat Keamanan: <strong style="color: #4ade80;">Maksimal (Forward Secrecy Session
-                  Key)</strong></span>
-              <span>Score: <strong>9.5/10 (Dynamic Rotation)</strong></span>
+        <!-- BREADCRUMB & NAVIGASI ANTAR SKEMA -->
+        <nav class="subnav-bar" aria-label="Navigasi Skema Pengujian">
+
+            <div class="breadcrumb-trail">
+                <a href="/index.html">Beranda</a>
+                <span>/</span>
+                <span>Skema Pengujian</span>
+                <span>/</span>
+                <span class="current-crumb">Dynamic Rotation</span>
             </div>
-          </div>
-        </div>
-        <button type="button" id="btnLogoutScheme" class="btn-back">
-          Logout
-        </button>
-      </div>
-    </section>
 
-    <!-- KONFIGURASI SESSION KEY ROTATION -->
-    <section class="panel-card top-lg">
-      <div class="section-heading">
-        <span class="heading-icon">&#9881;</span>
-        <div>
-          <h2>Konfigurasi Session Key Rotation</h2>
-          <p class="card-desc">Tentukan pemicu rotasi berdasarkan jumlah request dan interval waktu, lalu aktifkan sesi.
-          </p>
-        </div>
-      </div>
+            <div class="scheme-pills">
 
-      <div class="form-grid-2">
-        <div class="form-group">
-          <label for="cfgMaxRequests">Batas Permintaan Sebelum Rotasi</label>
-          <input type="text" inputmode="numeric" id="cfgMaxRequests" list="maxReqSuggestions" value="100"
-            placeholder="Pilih (50, 100, 250, 500, 750, 1000) atau ketik manual..." />
-          <datalist id="maxReqSuggestions">
-            <option value="50"></option>
-            <option value="100"></option>
-            <option value="250"></option>
-            <option value="500"></option>
-            <option value="750"></option>
-            <option value="1000"></option>
-          </datalist>
-        </div>
+                <a class="scheme-pill" href="/pages/no_encryption.html">
+                    <span class="dot dot-red"></span>
+                    No Encryption
+                </a>
 
-        <div class="form-group">
-          <label for="cfgIntervalSec">Interval Waktu Sebelum Rotasi</label>
-          <select id="cfgIntervalSec">
-            <option value="10">10 detik</option>
-            <option value="30">30 detik</option>
-            <option value="60">1 menit</option>
-            <option value="300" selected>5 menit</option>
-            <option value="600">10 menit</option>
-            <option value="1200">20 menit</option>
-            <option value="1800">30 menit</option>
-          </select>
-        </div>
-      </div>
+                <a class="scheme-pill" href="/pages/aes.html">
+                    <span class="dot dot-blue"></span>
+                    AES-256-GCM
+                </a>
 
-      <div class="form-grid-2">
-        <button type="button" id="btnStartSession" class="btn-primary btn-full">
-          &#8644; Mulai Sesi
-        </button>
-        <button type="button" id="btnEndSession" class="btn-back btn-full" style="text-align: center;" disabled>
-          Akhiri Sesi
-        </button>
-      </div>
-    </section>
+                <a class="scheme-pill" href="/pages/rsa.html">
+                    <span class="dot dot-amber"></span>
+                    RSA-OAEP
+                </a>
 
-    <!-- STATUS SESI DYNAMIC -->
-    <section class="panel-card top-lg">
-      <div class="section-heading">
-        <span class="heading-icon">&#9673;</span>
-        <div>
-          <h2>Status Sesi Dynamic</h2>
-          <p class="card-desc">Status verifikasi public key dan sesi enkripsi yang sedang berjalan.</p>
-        </div>
-      </div>
+                <a class="scheme-pill" href="/pages/rsa_aes.html">
+                    <span class="dot dot-purple"></span>
+                    RSA-AES Hybrid
+                </a>
 
-      <div class="form-grid-2">
-        <div class="recap-item" style="display: flex; justify-content: space-between; align-items: center;">
-          <span>Status Public Key</span>
-          <strong id="statusPublicKey" style="color: #fbbf24;">Public key terverifikasi</strong>
-        </div>
+                <a class="scheme-pill is-active" href="/pages/rsa_aes_dynamicRotation.html">
+                    <span class="dot dot-green"></span>
+                    Dynamic Rotation
+                </a>
 
-        <div class="recap-item" style="display: flex; justify-content: space-between; align-items: center;">
-          <span>Status Sesi</span>
-          <strong id="statusSessionState" style="color: #f87171;">Sesi belum aktif</strong>
-        </div>
-
-        <div class="recap-item" style="display: flex; justify-content: space-between; align-items: center; gap: 12px;">
-          <span>Session ID</span>
-          <strong id="statusSessionId"
-            style="color: #fbbf24; font-family: monospace; word-break: break-all; text-align: right;">-</strong>
-        </div>
-
-        <div class="recap-item" style="display: flex; justify-content: space-between; align-items: center;">
-          <span>Ukuran Public Key</span>
-          <strong id="statusPublicKeyBits" style="color: #fbbf24;">2048 bit</strong>
-        </div>
-      </div>
-    </section>
-
-    <!-- BARIS 1: Pengujian Manual (Kiri) & Hasil Pengujian Manual (Kanan) -->
-    <section class="two-col-grid top-lg">
-      <article class="panel-card">
-        <div class="section-heading">
-          <span class="heading-icon">01</span>
-          <div>
-            <h2>Pengujian Manual</h2>
-            <p class="card-desc">Kirim satu pesan untuk menguji enkripsi &amp; dekripsi Dynamic Rotation.</p>
-          </div>
-        </div>
-
-        <form id="manualForm">
-          <div class="form-group">
-            <label for="manualMessage">Pesan</label>
-            <textarea id="manualMessage" rows="4">Halo server, ini uji Dynamic Session Key Rotation.</textarea>
-          </div>
-
-          <div class="form-group">
-            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
-              <input type="checkbox" id="forceRotateCheck" />
-              <span>Paksa rotasi kunci baru pada request ini (Force Rotate)</span>
-            </label>
-          </div>
-
-          <button type="submit" id="btnManualSend" class="btn-primary btn-full" disabled>
-            &#10148; Aktifkan Sesi Terlebih Dahulu
-          </button>
-        </form>
-      </article>
-
-      <article class="panel-card">
-        <div class="section-heading">
-          <span class="heading-icon">&#10003;</span>
-          <div>
-            <h2>Hasil Pengujian Manual</h2>
-            <p class="card-desc">Informasi ID sesi kunci, status rotasi, IV/tag, ciphertext, dan dekripsi.</p>
-          </div>
-        </div>
-
-        <div class="form-group">
-          <label>Session Key ID &amp; Status Rotasi</label>
-          <div id="rotSessionBox" class="readonly-box">Key ID: - | Rotasi: - | Pesan pd Kunci: -</div>
-        </div>
-
-        <div class="form-group">
-          <label>IV / Nonce (12-byte Hex) &amp; Auth Tag (16-byte Hex)</label>
-          <div id="rotIvTagBox" class="readonly-box">IV: - | Tag: -</div>
-        </div>
-
-        <div class="form-group">
-          <label>Ciphertext Payload (Hex)</label>
-          <div id="rotCipherBox" class="readonly-box">-</div>
-        </div>
-
-        <div class="form-group">
-          <label>Pesan Hasil Dekripsi Server</label>
-          <div id="rotDecryptedBox" class="readonly-box">-</div>
-        </div>
-
-        <div class="manual-meta-row">
-          <span>Status</span>
-          <strong id="manualStatus">Menunggu aktivasi sesi</strong>
-        </div>
-        <div class="manual-meta-row">
-          <span>Waktu Proses</span>
-          <strong id="manualTiming">-</strong>
-        </div>
-        <p id="manualSummaryLine" class="helper-text top-sm no-margin">
-          Klik tombol "Mulai Sesi" di atas sebelum melakukan pengujian.
-        </p>
-      </article>
-    </section>
-
-    <!-- BARIS 2: Pengujian Otomatis / Batch (Kiri) & Hasil Pengujian Otomatis (Kanan) -->
-    <section class="two-col-grid top-lg">
-      <article class="panel-card">
-        <div class="section-heading">
-          <span class="heading-icon">02</span>
-          <div>
-            <h2>Pengujian Otomatis (Batch Testing)</h2>
-            <p class="card-desc">Pengiriman pesan otomatis untuk mengukur performa rotasi kunci sesi dinamis.</p>
-          </div>
-        </div>
-
-        <form id="batchForm">
-          <div class="form-grid-2">
-            <div class="form-group">
-              <label for="batchPreset">Jumlah Request (Preset)</label>
-              <select id="batchPreset">
-                <option value="50">50 Request</option>
-                <option value="100" selected>100 Request</option>
-                <option value="250">250 Request</option>
-                <option value="500">500 Request</option>
-                <option value="750">750 Request</option>
-                <option value="1000">1000 Request</option>
-              </select>
             </div>
-            <div class="form-group">
-              <label for="batchCount">Jumlah Request (Ketik Manual)</label>
-              <input type="number" id="batchCount" min="1" max="10000" value="100" />
+        </nav>
+
+        <!-- HEADER SKEMA -->
+        <section class="panel-card scheme-header-card">
+
+            <div class="scheme-header-top">
+
+                <div class="scheme-title-group">
+
+                    <div class="scheme-icon-box">ROT</div>
+
+                    <div>
+
+                        <h1>Pengujian Dynamic Session Key Rotation</h1>
+
+                        <span class="badge-danger"
+                            style="background-color: rgba(34, 197, 94, 0.14); color: #86efac; border-color: rgba(34, 197, 94, 0.4);">
+
+                            RSA-2048 OAEP + AES-256-GCM
+
+                        </span>
+
+                        <p class="card-desc top-sm">
+
+                            Membangun secure session menggunakan RSA-2048 OAEP
+                            dan AES-256-GCM sebagai dasar implementasi mekanisme
+                            Dynamic Session Key Rotation berdasarkan jumlah pesan
+                            atau interval waktu.
+
+                        </p>
+
+                        <div class="scheme-meta">
+
+                            <span>
+                                Algoritma:
+                                <strong style="color: #4ade80;">
+                                    RSA-2048-OAEP + AES-256-GCM
+                                </strong>
+                            </span>
+
+                            <span>
+                                Mekanisme:
+                                <strong>
+                                    Dynamic Session Key Rotation
+                                </strong>
+                            </span>
+
+                        </div>
+
+                    </div>
+
+                </div>
+
+                <button type="button" id="btnLogoutScheme" class="btn-back">
+                    Logout
+                </button>
+
             </div>
-          </div>
 
-          <div class="form-group">
-            <label for="batchPrefix">Pesan Pengujian</label>
-            <textarea id="batchPrefix" rows="3">Halo server, ini pesan pengujian batch Dynamic Rotation.</textarea>
-          </div>
+        </section>
 
-          <button type="submit" id="btnBatchStart" class="btn-primary btn-full" disabled>
-            &#9654; Aktifkan Sesi Terlebih Dahulu
-          </button>
-        </form>
+        <!-- KONFIGURASI SESSION KEY ROTATION -->
+        <section class="panel-card top-lg">
 
-        <div class="progress-box">
-          <div class="progress-header">
-            <span id="batchStatusText">Status: Sesi belum aktif</span>
-            <span id="progressText">0 / 0</span>
-          </div>
-          <div class="progress-track">
-            <div id="progressFill" class="progress-fill" style="width: 0%;"></div>
-          </div>
-        </div>
-      </article>
+            <div class="section-heading">
 
-      <article class="panel-card">
-        <div class="section-heading">
-          <span class="heading-icon">#</span>
-          <div>
-            <h2>Hasil Pengujian Otomatis</h2>
-            <p class="card-desc">Detail response time, latensi, throughput, dan metrik server untuk setiap request.</p>
-          </div>
-        </div>
+                <span class="heading-icon">&#9881;</span>
 
-        <div class="table-wrap">
-          <table class="result-table">
-            <thead>
-              <tr>
-                <th>Request</th>
-                <th>Response Time (ms)</th>
-                <th>Latency (ms)</th>
-                <th>Throughput (KB/s)</th>
-                <th>Total Bytes</th>
-                <th>CPU Server (ms)</th>
-                <th>RAM RSS (MB)</th>
-                <th>RAM Heap (MB)</th>
-              </tr>
-            </thead>
-            <tbody id="batchTableBody">
-              <tr>
-                <td colspan="8" class="empty-cell">Belum ada data pengujian batch.</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </article>
-    </section>
+                <div>
+                    <h2>Konfigurasi Session Key Rotation</h2>
 
-    <!-- WAKTU DAN STATISTIK SESI -->
-    <section class="panel-card top-lg">
-      <div class="section-heading">
-        <span class="heading-icon">&#9202;</span>
-        <div>
-          <h2>Waktu dan Statistik Sesi</h2>
-          <p class="card-desc">Pemantauan waktu, jumlah request, dan siklus rotasi session key.</p>
-        </div>
-      </div>
+                    <p class="card-desc">
+                        Tentukan pemicu rotasi berdasarkan jumlah request
+                        dan interval waktu, kemudian aktifkan sesi.
+                    </p>
+                </div>
 
-      <div class="form-grid-2">
-        <div class="recap-item" style="display: flex; justify-content: space-between; align-items: center;">
-          <span>Jam Saat Ini</span>
-          <strong id="statCurrentTime" style="color: #fbbf24; font-variant-numeric: tabular-nums;">00.00.00</strong>
-        </div>
+            </div>
 
-        <div class="recap-item" style="display: flex; justify-content: space-between; align-items: center;">
-          <span>Tanggal</span>
-          <strong id="statCurrentDate" style="color: #fbbf24;">-</strong>
-        </div>
+            <div class="form-grid-2">
 
-        <div class="recap-item" style="display: flex; justify-content: space-between; align-items: center;">
-          <span>Jumlah Permintaan</span>
-          <strong id="statTotalRequests" style="color: #fbbf24;">0</strong>
-        </div>
+                <div class="form-group">
 
-        <div class="recap-item" style="display: flex; justify-content: space-between; align-items: center;">
-          <span>Jumlah Rotasi Kunci</span>
-          <strong id="statRotationCount" style="color: #fbbf24;">0</strong>
-        </div>
+                    <label for="cfgMaxRequests">
+                        Batas Permintaan Sebelum Rotasi
+                    </label>
 
-        <div class="recap-item" style="display: flex; justify-content: space-between; align-items: center;">
-          <span>Ambang Rotasi</span>
-          <strong id="statRotationThreshold" style="color: #fbbf24;">100</strong>
-        </div>
+                    <input
+                        type="text"
+                        inputmode="numeric"
+                        id="cfgMaxRequests"
+                        list="maxReqSuggestions"
+                        value="100"
+                        placeholder="Pilih (50, 100, 250, 500, 750, 1000) atau ketik manual..."
+                    />
 
-        <div class="recap-item" style="display: flex; justify-content: space-between; align-items: center;">
-          <span>Interval Waktu</span>
-          <strong id="statIntervalLabel" style="color: #fbbf24;">5 menit</strong>
-        </div>
+                    <datalist id="maxReqSuggestions">
+                        <option value="50"></option>
+                        <option value="100"></option>
+                        <option value="250"></option>
+                        <option value="500"></option>
+                        <option value="750"></option>
+                        <option value="1000"></option>
+                    </datalist>
 
-        <div class="recap-item" style="display: flex; justify-content: space-between; align-items: center;">
-          <span>Waktu Sejak Rotasi Terakhir</span>
-          <strong id="statSinceLastRotation"
-            style="color: #fbbf24; font-variant-numeric: tabular-nums;">00:00:00</strong>
-        </div>
+                </div>
 
-        <div class="recap-item" style="display: flex; justify-content: space-between; align-items: center;">
-          <span>Waktu Menuju Rotasi Berikutnya</span>
-          <strong id="statUntilNextRotation"
-            style="color: #fbbf24; font-variant-numeric: tabular-nums;">00:00:00</strong>
-        </div>
+                <div class="form-group">
 
-        <div class="recap-item" style="display: flex; justify-content: space-between; align-items: center;">
-          <span>Waktu Rotasi Terakhir</span>
-          <strong id="statLastRotationClock" style="color: #fbbf24; font-variant-numeric: tabular-nums;">-</strong>
-        </div>
-      </div>
-    </section>
+                    <label for="cfgIntervalSec">
+                        Interval Waktu Sebelum Rotasi
+                    </label>
 
-    <!-- Rekapitulasi Hasil Batch Lengkap (15 Metrik dalam Grid 3 Kolom) -->
-    <section class="panel-card top-lg">
-      <div class="section-heading">
-        <span class="heading-icon">&#9783;</span>
-        <div>
-          <h2>Rekapitulasi Hasil Batch</h2>
-          <p class="card-desc">Ringkasan performa pengujian otomatis skema Dynamic Session Key Rotation.</p>
-        </div>
-      </div>
+                    <select id="cfgIntervalSec">
 
-      <div class="recap-grid-3">
-        <!-- Baris 1 -->
-        <div class="recap-item">
-          <span>Total Request</span>
-          <strong id="recapTotalReq">0</strong>
-        </div>
-        <div class="recap-item">
-          <span>Berhasil</span>
-          <strong id="recapSuccessCount">0</strong>
-        </div>
-        <div class="recap-item">
-          <span>Gagal</span>
-          <strong id="recapFailedCount">0</strong>
-        </div>
+                        <option value="10">10 detik</option>
+                        <option value="30">30 detik</option>
+                        <option value="60">1 menit</option>
+                        <option value="300" selected>5 menit</option>
+                        <option value="600">10 menit</option>
+                        <option value="1200">20 menit</option>
+                        <option value="1800">30 menit</option>
 
-        <!-- Baris 2 -->
-        <div class="recap-item">
-          <span>Rata-rata Response Time</span>
-          <strong id="recapAvgResp">0.000 ms</strong>
-        </div>
-        <div class="recap-item">
-          <span>Minimum Response Time</span>
-          <strong id="recapMinResp">0.000 ms</strong>
-        </div>
-        <div class="recap-item">
-          <span>Maksimum Response Time</span>
-          <strong id="recapMaxResp">0.000 ms</strong>
-        </div>
+                    </select>
 
-        <!-- Baris 3 -->
-        <div class="recap-item">
-          <span>Total Waktu Pengujian</span>
-          <strong id="recapTotalTime">0.000 ms</strong>
-        </div>
-        <div class="recap-item">
-          <span>Throughput</span>
-          <strong id="recapRps">0.000 request/detik</strong>
-        </div>
-        <div class="recap-item">
-          <span>Success Rate</span>
-          <strong id="recapSuccessRate">0.00%</strong>
-        </div>
+                </div>
 
-        <!-- Baris 4 -->
-        <div class="recap-item">
-          <span>Rata-rata Latency</span>
-          <strong id="recapAvgLat">0.000 ms</strong>
-        </div>
-        <div class="recap-item">
-          <span>Rata-rata Throughput (KB/s)</span>
-          <strong id="recapAvgTput">0.000 KB/s</strong>
-        </div>
-        <div class="recap-item">
-          <span>Total Bytes</span>
-          <strong id="recapTotalBytes">0 bytes</strong>
-        </div>
+            </div>
 
-        <!-- Baris 5 -->
-        <div class="recap-item">
-          <span>Rata-rata CPU Server</span>
-          <strong id="recapAvgCpu">0.000 ms</strong>
-        </div>
-        <div class="recap-item">
-          <span>Rata-rata RAM RSS</span>
-          <strong id="recapAvgRss">0.00 MB</strong>
-        </div>
-        <div class="recap-item">
-          <span>Rata-rata RAM Heap</span>
-          <strong id="recapAvgHeap">0.00 MB</strong>
-        </div>
-      </div>
+            <div class="form-grid-2">
 
-      <div class="recap-footer">
-        <div>
-          <strong id="recapFooterStatus" class="text-success" style="display: none;">&#10003; Pengujian batch
-            selesai</strong>
-          <p id="exportInfo" class="helper-text no-margin">Hasil pengujian belum tersedia untuk diunduh.</p>
-        </div>
-        <button type="button" id="btnExportCsv" class="btn-primary" disabled>
-          &#8595; Unduh Hasil CSV
-        </button>
-      </div>
-    </section>
-  </main>
+                <button
+                    type="button"
+                    id="btnStartSession"
+                    class="btn-primary btn-full">
 
-  <script src="/js/dynamic_rotation-page.js"></script>
+                    &#8644; Mulai Sesi
+
+                </button>
+
+                <button
+                    type="button"
+                    id="btnEndSession"
+                    class="btn-back btn-full"
+                    style="text-align: center;"
+                    disabled>
+
+                    Akhiri Sesi
+
+                </button>
+
+            </div>
+
+        </section>
+
+        <!-- STATUS SESI DYNAMIC -->
+        <section class="panel-card top-lg">
+
+            <div class="section-heading">
+
+                <span class="heading-icon">&#9673;</span>
+
+                <div>
+                    <h2>Status Sesi Dynamic</h2>
+
+                    <p class="card-desc">
+                        Status pengambilan public key dan secure session
+                        yang sedang berjalan.
+                    </p>
+                </div>
+
+            </div>
+
+            <div class="form-grid-2">
+
+                <div class="recap-item"
+                    style="display: flex; justify-content: space-between; align-items: center;">
+
+                    <span>Status Public Key</span>
+
+                    <strong
+                        id="statusPublicKey"
+                        style="color: #fbbf24;">
+
+                        Belum mengambil public key
+
+                    </strong>
+
+                </div>
+
+                <div class="recap-item"
+                    style="display: flex; justify-content: space-between; align-items: center;">
+
+                    <span>Status Sesi</span>
+
+                    <strong
+                        id="statusSessionState"
+                        style="color: #f87171;">
+
+                        Sesi belum aktif
+
+                    </strong>
+
+                </div>
+
+                <div class="recap-item"
+                    style="display: flex; justify-content: space-between; align-items: center; gap: 12px;">
+
+                    <span>Session ID</span>
+
+                    <strong
+                        id="statusSessionId"
+                        style="color: #fbbf24; font-family: monospace; word-break: break-all; text-align: right;">
+
+                        -
+
+                    </strong>
+
+                </div>
+
+                <div class="recap-item"
+                    style="display: flex; justify-content: space-between; align-items: center;">
+
+                    <span>Ukuran Public Key</span>
+
+                    <strong
+                        id="statusPublicKeyBits"
+                        style="color: #fbbf24;">
+
+                        2048 bit
+
+                    </strong>
+
+                </div>
+
+            </div>
+
+        </section>
+
+        <!-- BARIS 1: PENGUJIAN MANUAL -->
+        <section class="two-col-grid top-lg">
+
+            <article class="panel-card">
+
+                <div class="section-heading">
+
+                    <span class="heading-icon">01</span>
+
+                    <div>
+                        <h2>Pengujian Manual</h2>
+
+                        <p class="card-desc">
+                            Kirim satu pesan untuk menguji enkripsi dan
+                            dekripsi Dynamic Session Key Rotation.
+                        </p>
+                    </div>
+
+                </div>
+
+                <form id="manualForm">
+
+                    <div class="form-group">
+
+                        <label for="manualMessage">
+                            Pesan
+                        </label>
+
+                        <textarea
+                            id="manualMessage"
+                            rows="4">Halo server, ini uji Dynamic Session Key Rotation.</textarea>
+
+                    </div>
+
+                    <div class="form-group">
+
+                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+
+                            <input
+                                type="checkbox"
+                                id="forceRotateCheck" />
+
+                            <span>
+                                Paksa rotasi kunci baru pada request ini (Force Rotate)
+                            </span>
+
+                        </label>
+
+                    </div>
+
+                    <button
+                        type="submit"
+                        id="btnManualSend"
+                        class="btn-primary btn-full"
+                        disabled>
+
+                        &#10148; Aktifkan Sesi Terlebih Dahulu
+
+                    </button>
+
+                </form>
+
+            </article>
+
+            <article class="panel-card">
+
+                <div class="section-heading">
+
+                    <span class="heading-icon">&#10003;</span>
+
+                    <div>
+                        <h2>Hasil Pengujian Manual</h2>
+
+                        <p class="card-desc">
+                            Informasi ID sesi kunci, status rotasi,
+                            IV/tag, ciphertext, dan hasil dekripsi.
+                        </p>
+                    </div>
+
+                </div>
+
+                <div class="form-group">
+
+                    <label>
+                        Session Key ID &amp; Status Rotasi
+                    </label>
+
+                    <div id="rotSessionBox" class="readonly-box">
+                        Key ID: - | Rotasi: - | Pesan pd Kunci: -
+                    </div>
+
+                </div>
+
+                <div class="form-group">
+
+                    <label>
+                        IV / Nonce (12-byte Hex) &amp; Auth Tag (16-byte Hex)
+                    </label>
+
+                    <div id="rotIvTagBox" class="readonly-box">
+                        IV: - | Tag: -
+                    </div>
+
+                </div>
+
+                <div class="form-group">
+
+                    <label>
+                        Ciphertext Payload (Hex)
+                    </label>
+
+                    <div id="rotCipherBox" class="readonly-box">
+                        -
+                    </div>
+
+                </div>
+
+                <div class="form-group">
+
+                    <label>
+                        Pesan Hasil Dekripsi Server
+                    </label>
+
+                    <div id="rotDecryptedBox" class="readonly-box">
+                        -
+                    </div>
+
+                </div>
+
+                <div class="manual-meta-row">
+
+                    <span>Status</span>
+
+                    <strong id="manualStatus">
+                        Menunggu aktivasi sesi
+                    </strong>
+
+                </div>
+
+                <div class="manual-meta-row">
+
+                    <span>Waktu Proses</span>
+
+                    <strong id="manualTiming">
+                        -
+                    </strong>
+
+                </div>
+
+                <p
+                    id="manualSummaryLine"
+                    class="helper-text top-sm no-margin">
+
+                    Klik tombol "Mulai Sesi" di atas sebelum melakukan pengujian.
+
+                </p>
+
+            </article>
+
+        </section>
+
+        <!-- BARIS 2: BATCH TESTING -->
+        <section class="two-col-grid top-lg">
+
+            <article class="panel-card">
+
+                <div class="section-heading">
+
+                    <span class="heading-icon">02</span>
+
+                    <div>
+                        <h2>Pengujian Otomatis (Batch Testing)</h2>
+
+                        <p class="card-desc">
+                            Pengiriman pesan otomatis untuk mengukur performa
+                            mekanisme rotasi kunci sesi dinamis.
+                        </p>
+                    </div>
+
+                </div>
+
+                <form id="batchForm">
+
+                    <div class="form-grid-2">
+
+                        <div class="form-group">
+
+                            <label for="batchPreset">
+                                Jumlah Request (Preset)
+                            </label>
+
+                            <select id="batchPreset">
+
+                                <option value="50">50 Request</option>
+                                <option value="100" selected>100 Request</option>
+                                <option value="250">250 Request</option>
+                                <option value="500">500 Request</option>
+                                <option value="750">750 Request</option>
+                                <option value="1000">1000 Request</option>
+
+                            </select>
+
+                        </div>
+
+                        <div class="form-group">
+
+                            <label for="batchCount">
+                                Jumlah Request (Ketik Manual)
+                            </label>
+
+                            <input
+                                type="number"
+                                id="batchCount"
+                                min="1"
+                                max="10000"
+                                value="100" />
+
+                        </div>
+
+                    </div>
+
+                    <div class="form-group">
+
+                        <label for="batchPrefix">
+                            Pesan Pengujian
+                        </label>
+
+                        <textarea
+                            id="batchPrefix"
+                            rows="3">Halo server, ini pesan pengujian batch Dynamic Rotation.</textarea>
+
+                    </div>
+
+                    <button
+                        type="submit"
+                        id="btnBatchStart"
+                        class="btn-primary btn-full"
+                        disabled>
+
+                        &#9654; Aktifkan Sesi Terlebih Dahulu
+
+                    </button>
+
+                </form>
+
+                <div class="progress-box">
+
+                    <div class="progress-header">
+
+                        <span id="batchStatusText">
+                            Status: Sesi belum aktif
+                        </span>
+
+                        <span id="progressText">
+                            0 / 0
+                        </span>
+
+                    </div>
+
+                    <div class="progress-track">
+
+                        <div
+                            id="progressFill"
+                            class="progress-fill"
+                            style="width: 0%;">
+
+                        </div>
+
+                    </div>
+
+                </div>
+
+            </article>
+
+            <article class="panel-card">
+
+                <div class="section-heading">
+
+                    <span class="heading-icon">#</span>
+
+                    <div>
+                        <h2>Hasil Pengujian Otomatis</h2>
+
+                        <p class="card-desc">
+                            Detail response time, latensi, throughput,
+                            dan metrik server untuk setiap request.
+                        </p>
+                    </div>
+
+                </div>
+
+                <div class="table-wrap">
+
+                    <table class="result-table">
+
+                        <thead>
+
+                            <tr>
+                                <th>Request</th>
+                                <th>Response Time (ms)</th>
+                                <th>Latency (ms)</th>
+                                <th>Throughput (KB/s)</th>
+                                <th>Total Bytes</th>
+                                <th>CPU Server (ms)</th>
+                                <th>RAM RSS (MB)</th>
+                                <th>RAM Heap (MB)</th>
+                            </tr>
+
+                        </thead>
+
+                        <tbody id="batchTableBody">
+
+                            <tr>
+                                <td colspan="8" class="empty-cell">
+                                    Belum ada data pengujian batch.
+                                </td>
+                            </tr>
+
+                        </tbody>
+
+                    </table>
+
+                </div>
+
+            </article>
+
+        </section>
+
+        <!-- WAKTU DAN STATISTIK SESI -->
+        <section class="panel-card top-lg">
+
+            <div class="section-heading">
+
+                <span class="heading-icon">&#9202;</span>
+
+                <div>
+                    <h2>Waktu dan Statistik Sesi</h2>
+
+                    <p class="card-desc">
+                        Pemantauan waktu, jumlah request, dan siklus
+                        rotasi session key.
+                    </p>
+                </div>
+
+            </div>
+
+            <div class="form-grid-2">
+
+                <div class="recap-item"
+                    style="display: flex; justify-content: space-between; align-items: center;">
+
+                    <span>Jam Saat Ini</span>
+
+                    <strong
+                        id="statCurrentTime"
+                        style="color: #fbbf24; font-variant-numeric: tabular-nums;">
+
+                        00.00.00
+
+                    </strong>
+
+                </div>
+
+                <div class="recap-item"
+                    style="display: flex; justify-content: space-between; align-items: center;">
+
+                    <span>Tanggal</span>
+
+                    <strong
+                        id="statCurrentDate"
+                        style="color: #fbbf24;">
+
+                        -
+
+                    </strong>
+
+                </div>
+
+                <div class="recap-item"
+                    style="display: flex; justify-content: space-between; align-items: center;">
+
+                    <span>Jumlah Permintaan</span>
+
+                    <strong
+                        id="statTotalRequests"
+                        style="color: #fbbf24;">
+
+                        0
+
+                    </strong>
+
+                </div>
+
+                <div class="recap-item"
+                    style="display: flex; justify-content: space-between; align-items: center;">
+
+                    <span>Jumlah Rotasi Kunci</span>
+
+                    <strong
+                        id="statRotationCount"
+                        style="color: #fbbf24;">
+
+                        0
+
+                    </strong>
+
+                </div>
+
+                <div class="recap-item"
+                    style="display: flex; justify-content: space-between; align-items: center;">
+
+                    <span>Ambang Rotasi</span>
+
+                    <strong
+                        id="statRotationThreshold"
+                        style="color: #fbbf24;">
+
+                        100
+
+                    </strong>
+
+                </div>
+
+                <div class="recap-item"
+                    style="display: flex; justify-content: space-between; align-items: center;">
+
+                    <span>Interval Waktu</span>
+
+                    <strong
+                        id="statIntervalLabel"
+                        style="color: #fbbf24;">
+
+                        5 menit
+
+                    </strong>
+
+                </div>
+
+                <div class="recap-item"
+                    style="display: flex; justify-content: space-between; align-items: center;">
+
+                    <span>Waktu Sejak Rotasi Terakhir</span>
+
+                    <strong
+                        id="statSinceLastRotation"
+                        style="color: #fbbf24; font-variant-numeric: tabular-nums;">
+
+                        00:00:00
+
+                    </strong>
+
+                </div>
+
+                <div class="recap-item"
+                    style="display: flex; justify-content: space-between; align-items: center;">
+
+                    <span>Waktu Menuju Rotasi Berikutnya</span>
+
+                    <strong
+                        id="statUntilNextRotation"
+                        style="color: #fbbf24; font-variant-numeric: tabular-nums;">
+
+                        Belum tersedia
+
+                    </strong>
+
+                </div>
+
+                <div class="recap-item"
+                    style="display: flex; justify-content: space-between; align-items: center;">
+
+                    <span>Waktu Rotasi Terakhir</span>
+
+                    <strong
+                        id="statLastRotationClock"
+                        style="color: #fbbf24; font-variant-numeric: tabular-nums;">
+
+                        -
+
+                    </strong>
+
+                </div>
+
+            </div>
+
+        </section>
+
+        <!-- REKAPITULASI HASIL BATCH -->
+        <section class="panel-card top-lg">
+
+            <div class="section-heading">
+
+                <span class="heading-icon">&#9783;</span>
+
+                <div>
+                    <h2>Rekapitulasi Hasil Batch</h2>
+
+                    <p class="card-desc">
+                        Ringkasan performa pengujian otomatis skema
+                        Dynamic Session Key Rotation.
+                    </p>
+                </div>
+
+            </div>
+
+            <div class="recap-grid-3">
+
+                <!-- BARIS 1 -->
+
+                <div class="recap-item">
+                    <span>Total Request</span>
+                    <strong id="recapTotalReq">0</strong>
+                </div>
+
+                <div class="recap-item">
+                    <span>Berhasil</span>
+                    <strong id="recapSuccessCount">0</strong>
+                </div>
+
+                <div class="recap-item">
+                    <span>Gagal</span>
+                    <strong id="recapFailedCount">0</strong>
+                </div>
+
+                <!-- BARIS 2 -->
+
+                <div class="recap-item">
+                    <span>Rata-rata Response Time</span>
+                    <strong id="recapAvgResp">0.000 ms</strong>
+                </div>
+
+                <div class="recap-item">
+                    <span>Minimum Response Time</span>
+                    <strong id="recapMinResp">0.000 ms</strong>
+                </div>
+
+                <div class="recap-item">
+                    <span>Maksimum Response Time</span>
+                    <strong id="recapMaxResp">0.000 ms</strong>
+                </div>
+
+                <!-- BARIS 3 -->
+
+                <div class="recap-item">
+                    <span>Total Waktu Pengujian</span>
+                    <strong id="recapTotalTime">0.000 ms</strong>
+                </div>
+
+                <div class="recap-item">
+                    <span>Throughput</span>
+                    <strong id="recapRps">0.000 request/detik</strong>
+                </div>
+
+                <div class="recap-item">
+                    <span>Success Rate</span>
+                    <strong id="recapSuccessRate">0.00%</strong>
+                </div>
+
+                <!-- BARIS 4 -->
+
+                <div class="recap-item">
+                    <span>Rata-rata Latency</span>
+                    <strong id="recapAvgLat">0.000 ms</strong>
+                </div>
+
+                <div class="recap-item">
+                    <span>Rata-rata Throughput (KB/s)</span>
+                    <strong id="recapAvgTput">0.000 KB/s</strong>
+                </div>
+
+                <div class="recap-item">
+                    <span>Total Bytes</span>
+                    <strong id="recapTotalBytes">0 bytes</strong>
+                </div>
+
+                <!-- BARIS 5 -->
+
+                <div class="recap-item">
+                    <span>Rata-rata CPU Server</span>
+                    <strong id="recapAvgCpu">0.000 ms</strong>
+                </div>
+
+                <div class="recap-item">
+                    <span>Rata-rata RAM RSS</span>
+                    <strong id="recapAvgRss">0.00 MB</strong>
+                </div>
+
+                <div class="recap-item">
+                    <span>Rata-rata RAM Heap</span>
+                    <strong id="recapAvgHeap">0.00 MB</strong>
+                </div>
+
+            </div>
+
+            <div class="recap-footer">
+
+                <div>
+
+                    <strong
+                        id="recapFooterStatus"
+                        class="text-success"
+                        style="display: none;">
+
+                        &#10003; Pengujian batch selesai
+
+                    </strong>
+
+                    <p
+                        id="exportInfo"
+                        class="helper-text no-margin">
+
+                        Hasil pengujian belum tersedia untuk diunduh.
+
+                    </p>
+
+                </div>
+
+                <button
+                    type="button"
+                    id="btnExportCsv"
+                    class="btn-primary"
+                    disabled>
+
+                    &#8595; Unduh Hasil CSV
+
+                </button>
+
+            </div>
+
+        </section>
+
+    </main>
+
+    <!-- JAVASCRIPT DYNAMIC ROTATION -->
+    <script src="/js/dynamic_rotation-page.js"></script>
+
 </body>
-
 </html>

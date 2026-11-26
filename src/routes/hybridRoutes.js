@@ -215,12 +215,12 @@ router.post('/session/close', (req, res) => {
         });
     }
 
-    const closed = terminateSession(sessionId);
+    const result = terminateSession(sessionId);
 
     return res.json({
         status: 'ok',
         method: 'hybrid',
-        sessionClosed: closed
+        sessionClosed: result.terminated
     });
 });
 

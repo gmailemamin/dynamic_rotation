@@ -1,668 +1,3839 @@
+'use strict';
+
+/*
+   Implementasi:
+   1. Mengambil RSA Public Key dari backend.
+   2. Membuat AES-256-GCM Session Key di browser.
+   3. Mengenkripsi AES Session Key menggunakan RSA-OAEP.
+   4. Mengirim encrypted AES key ke backend.
+   5. Membentuk secure session.
+   6. Mengenkripsi pesan menggunakan AES-256-GCM.
+   7. Mengirim ciphertext ke backend.
+   8. Memvalidasi sequence dan response.
+   9. Menjalankan Dynamic Session Key Rotation secara otomatis.
+   10. Memverifikasi acknowledgement rotasi.
+   11. Menutup secure session.
+
+   Catatan:
+   Batch testing belum diimplementasikan.
+*/
+
 const SCHEME_ID = 'dynamic-rotation';
+const API_BASE = '/api/dynamic-rotation';
 const MAX_BATCH_REQUESTS = 10000;
 
-const cfgMaxRequestsInput = document.getElementById('cfgMaxRequests');
-const cfgIntervalSecSelect = document.getElementById('cfgIntervalSec');
-const btnStartSession = document.getElementById('btnStartSession');
-const btnEndSession = document.getElementById('btnEndSession');
+// =========================================================
+// 1. DOM ELEMENTS
+// =========================================================
 
-const statusPublicKeyEl = document.getElementById('statusPublicKey');
-const statusSessionStateEl = document.getElementById('statusSessionState');
-const statusSessionIdEl = document.getElementById('statusSessionId');
-const statusPublicKeyBitsEl = document.getElementById('statusPublicKeyBits');
+const $ = (id) => document.getElementById(id);
 
-const statCurrentTimeEl = document.getElementById('statCurrentTime');
-const statCurrentDateEl = document.getElementById('statCurrentDate');
-const statTotalRequestsEl = document.getElementById('statTotalRequests');
-const statRotationCountEl = document.getElementById('statRotationCount');
-const statRotationThresholdEl = document.getElementById('statRotationThreshold');
-const statIntervalLabelEl = document.getElementById('statIntervalLabel');
-const statSinceLastRotationEl = document.getElementById('statSinceLastRotation');
-const statUntilNextRotationEl = document.getElementById('statUntilNextRotation');
-const statLastRotationClockEl = document.getElementById('statLastRotationClock');
+const cfgMaxRequestsInput = $('cfgMaxRequests');
+const cfgIntervalSecSelect = $('cfgIntervalSec');
 
-const manualForm = document.getElementById('manualForm');
-const manualMessageInput = document.getElementById('manualMessage');
-const forceRotateCheckInput = document.getElementById('forceRotateCheck');
-const btnManualSend = document.getElementById('btnManualSend');
+const btnStartSession = $('btnStartSession');
+const btnEndSession = $('btnEndSession');
 
-const rotSessionBoxEl = document.getElementById('rotSessionBox');
-const rotIvTagBoxEl = document.getElementById('rotIvTagBox');
-const rotCipherBoxEl = document.getElementById('rotCipherBox');
-const rotDecryptedBoxEl = document.getElementById('rotDecryptedBox');
-const manualStatusEl = document.getElementById('manualStatus');
-const manualTimingEl = document.getElementById('manualTiming');
-const manualSummaryLineEl = document.getElementById('manualSummaryLine');
+const statusPublicKeyEl = $('statusPublicKey');
+const statusSessionStateEl = $('statusSessionState');
+const statusSessionIdEl = $('statusSessionId');
+const statusPublicKeyBitsEl = $('statusPublicKeyBits');
 
-const batchForm = document.getElementById('batchForm');
-const batchPresetSelect = document.getElementById('batchPreset');
-const batchCountInput = document.getElementById('batchCount');
-const batchPrefixInput = document.getElementById('batchPrefix');
-const btnBatchStart = document.getElementById('btnBatchStart');
+const statCurrentTimeEl = $('statCurrentTime');
+const statCurrentDateEl = $('statCurrentDate');
+const statTotalRequestsEl = $('statTotalRequests');
+const statRotationCountEl = $('statRotationCount');
+const statRotationThresholdEl = $('statRotationThreshold');
+const statIntervalLabelEl = $('statIntervalLabel');
+const statSinceLastRotationEl = $('statSinceLastRotation');
+const statUntilNextRotationEl = $('statUntilNextRotation');
+const statLastRotationClockEl = $('statLastRotationClock');
 
-const batchStatusTextEl = document.getElementById('batchStatusText');
-const progressTextEl = document.getElementById('progressText');
-const progressFillEl = document.getElementById('progressFill');
-const batchTableBodyEl = document.getElementById('batchTableBody');
+const manualForm = $('manualForm');
+const manualMessageInput = $('manualMessage');
+const forceRotateCheckInput = $('forceRotateCheck');
+const btnManualSend = $('btnManualSend');
 
-const recapTotalReqEl = document.getElementById('recapTotalReq');
-const recapSuccessCountEl = document.getElementById('recapSuccessCount');
-const recapFailedCountEl = document.getElementById('recapFailedCount');
+const rotSessionBoxEl = $('rotSessionBox');
+const rotIvTagBoxEl = $('rotIvTagBox');
+const rotCipherBoxEl = $('rotCipherBox');
+const rotDecryptedBoxEl = $('rotDecryptedBox');
 
-const recapAvgRespEl = document.getElementById('recapAvgResp');
-const recapMinRespEl = document.getElementById('recapMinResp');
-const recapMaxRespEl = document.getElementById('recapMaxResp');
+const manualStatusEl = $('manualStatus');
+const manualTimingEl = $('manualTiming');
+const manualSummaryLineEl = $('manualSummaryLine');
 
-const recapTotalTimeEl = document.getElementById('recapTotalTime');
-const recapRpsEl = document.getElementById('recapRps');
-const recapSuccessRateEl = document.getElementById('recapSuccessRate');
+const batchForm = $('batchForm');
+const batchPresetSelect = $('batchPreset');
+const batchCountInput = $('batchCount');
+const batchPrefixInput = $('batchPrefix');
+const btnBatchStart = $('btnBatchStart');
 
-const recapAvgLatEl = document.getElementById('recapAvgLat');
-const recapAvgTputEl = document.getElementById('recapAvgTput');
-const recapTotalBytesEl = document.getElementById('recapTotalBytes');
+const batchStatusTextEl = $('batchStatusText');
+const progressTextEl = $('progressText');
+const progressFillEl = $('progressFill');
+const batchTableBodyEl = $('batchTableBody');
 
-const recapAvgCpuEl = document.getElementById('recapAvgCpu');
-const recapAvgRssEl = document.getElementById('recapAvgRss');
-const recapAvgHeapEl = document.getElementById('recapAvgHeap');
+const recapTotalReqEl = $('recapTotalReq');
+const recapSuccessCountEl = $('recapSuccessCount');
+const recapFailedCountEl = $('recapFailedCount');
 
-const recapFooterStatusEl = document.getElementById('recapFooterStatus');
-const exportInfoEl = document.getElementById('exportInfo');
-const btnExportCsv = document.getElementById('btnExportCsv');
+const recapAvgRespEl = $('recapAvgResp');
+const recapMinRespEl = $('recapMinResp');
+const recapMaxRespEl = $('recapMaxResp');
+
+const recapTotalTimeEl = $('recapTotalTime');
+const recapRpsEl = $('recapRps');
+const recapSuccessRateEl = $('recapSuccessRate');
+
+const recapAvgLatEl = $('recapAvgLat');
+const recapAvgTputEl = $('recapAvgTput');
+const recapTotalBytesEl = $('recapTotalBytes');
+
+const recapAvgCpuEl = $('recapAvgCpu');
+const recapAvgRssEl = $('recapAvgRss');
+const recapAvgHeapEl = $('recapAvgHeap');
+
+const recapFooterStatusEl = $('recapFooterStatus');
+const exportInfoEl = $('exportInfo');
+const btnExportCsv = $('btnExportCsv');
+
+// =========================================================
+// 2. SESSION STATE
+// =========================================================
+
+let clientSessionKey = null;
+
+// RSA Public Key untuk proses Dynamic Rotation.
+let serverRsaPublicKey = null;
+
+// Mencegah dua request berjalan bersamaan.
+let isProcessingRequest = false;
+
+// Menyimpan waktu rotasi terakhir dari client.
+let lastRotationTime = 0;
+
+let sessionStats = {
+    active: false,
+    sessionId: null,
+    totalRequests: 0,
+    rotationCount: 0,
+    lastRotationMs: 0,
+    startedAtMs: 0,
+    keyVersion: 1,
+    lastSequence: 0
+};
 
 let batchRecords = [];
 let lastBatchElapsedMs = 0;
 
-let sessionStats = {
-    active: false,
-    totalRequests: 0,
-    rotationCount: 0,
-    lastRotationMs: 0
-};
+// =========================================================
+// 3. GENERAL HELPER
+// =========================================================
 
-function sanitizePositiveInt(rawVal, fallback, max = MAX_BATCH_REQUESTS) {
-    const cleaned = String(rawVal ?? '').replace(/[^\d]/g, '');
-    const num = Number(cleaned);
-    if (!Number.isFinite(num) || num <= 0) return fallback;
-    return Math.max(1, Math.min(max, Math.floor(num)));
+function setText(element, value) {
+    if (element) {
+        element.textContent = String(value);
+    }
+}
+
+function sanitizePositiveInt(
+    rawValue,
+    fallback,
+    max = MAX_BATCH_REQUESTS
+) {
+    const cleaned = String(rawValue ?? '').replace(/[^\d]/g, '');
+    const number = Number(cleaned);
+
+    if (!Number.isFinite(number) || number <= 0) {
+        return fallback;
+    }
+
+    return Math.max(1, Math.min(max, Math.floor(number)));
 }
 
 function getRotationThreshold() {
-    const val = sanitizePositiveInt(cfgMaxRequestsInput?.value, 100, MAX_BATCH_REQUESTS);
-    if (cfgMaxRequestsInput) cfgMaxRequestsInput.value = String(val);
-    return val;
+    const value = sanitizePositiveInt(
+        cfgMaxRequestsInput?.value,
+        100,
+        10000
+    );
+
+    if (cfgMaxRequestsInput) {
+        cfgMaxRequestsInput.value = String(value);
+    }
+
+    return value;
 }
 
 function getRotationIntervalSec() {
-    return Math.max(1, Number(cfgIntervalSecSelect?.value) || 300);
-}
+    const value = Number(cfgIntervalSecSelect?.value);
 
-function formatIntervalText(sec) {
-    if (sec % 60 === 0) {
-        return `${sec / 60} menit`;
+    if (!Number.isFinite(value) || value <= 0) {
+        return 300;
     }
-    return `${sec} detik`;
+
+    return Math.floor(value);
 }
 
-function formatClockDot(dateObj) {
-    const hh = String(dateObj.getHours()).padStart(2, '0');
-    const mm = String(dateObj.getMinutes()).padStart(2, '0');
-    const ss = String(dateObj.getSeconds()).padStart(2, '0');
-    return `${hh}.${mm}.${ss}`;
+function formatIntervalText(seconds) {
+    if (seconds % 60 === 0) {
+        return `${seconds / 60} menit`;
+    }
+
+    return `${seconds} detik`;
 }
 
-function formatDurationHms(totalSec) {
-    const clamped = Math.max(0, Math.floor(totalSec));
-    const hh = String(Math.floor(clamped / 3600)).padStart(2, '0');
-    const mm = String(Math.floor((clamped % 3600) / 60)).padStart(2, '0');
-    const ss = String(clamped % 60).padStart(2, '0');
-    return `${hh}:${mm}:${ss}`;
+function formatClockDot(date) {
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    const seconds = String(date.getSeconds()).padStart(2, '0');
+
+    return `${hours}.${minutes}.${seconds}`;
 }
+
+function formatDurationHms(totalSeconds) {
+    const seconds = Math.max(0, Math.floor(totalSeconds));
+
+    const hours = String(
+        Math.floor(seconds / 3600)
+    ).padStart(2, '0');
+
+    const minutes = String(
+        Math.floor((seconds % 3600) / 60)
+    ).padStart(2, '0');
+
+    const remainingSeconds = String(
+        seconds % 60
+    ).padStart(2, '0');
+
+    return `${hours}:${minutes}:${remainingSeconds}`;
+}
+
+// =========================================================
+// 4. BASE64 HELPER
+// =========================================================
+
+function arrayBufferToBase64(buffer) {
+    const bytes = new Uint8Array(buffer);
+    let binary = '';
+
+    for (let i = 0; i < bytes.length; i++) {
+        binary += String.fromCharCode(bytes[i]);
+    }
+
+    return btoa(binary);
+}
+
+function base64ToArrayBuffer(base64) {
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+
+    for (let i = 0; i < binary.length; i++) {
+        bytes[i] = binary.charCodeAt(i);
+    }
+
+    return bytes.buffer;
+}
+
+// =========================================================
+// AES-256-GCM CLIENT ENCRYPTION / DECRYPTION
+// =========================================================
+
+const AES_GCM_IV_LENGTH = 12;
+const AES_GCM_TAG_LENGTH = 16;
+
+// ---------------------------------------------------------
+// ENCRYPT MESSAGE
+// ---------------------------------------------------------
+
+async function encryptClientMessage(
+    message,
+    sequence,
+    keyVersion
+) {
+    if (!clientSessionKey) {
+        throw new Error('AES Session Key tidak tersedia.');
+    }
+
+    const iv = crypto.getRandomValues(
+        new Uint8Array(AES_GCM_IV_LENGTH)
+    );
+
+    const plaintext = new TextEncoder().encode(message);
+
+    // AAD harus identik dengan yang dibuat backend.
+    const aad = new TextEncoder().encode(
+        `${sessionStats.sessionId}:${sequence}:${keyVersion}`
+    );
+
+    const encryptedBuffer = await crypto.subtle.encrypt(
+        {
+            name: 'AES-GCM',
+            iv,
+            additionalData: aad,
+            tagLength: 128
+        },
+        clientSessionKey,
+        plaintext
+    );
+
+    // Web Crypto menghasilkan ciphertext + authentication tag.
+    const encryptedBytes = new Uint8Array(encryptedBuffer);
+
+    const ciphertext = encryptedBytes.slice(
+        0,
+        encryptedBytes.length - AES_GCM_TAG_LENGTH
+    );
+
+    const authTag = encryptedBytes.slice(
+        encryptedBytes.length - AES_GCM_TAG_LENGTH
+    );
+
+    return {
+        iv: arrayBufferToBase64(iv),
+        ciphertext: arrayBufferToBase64(ciphertext),
+        authTag: arrayBufferToBase64(authTag)
+    };
+}
+
+// ---------------------------------------------------------
+// DECRYPT SERVER RESPONSE
+// ---------------------------------------------------------
+
+async function decryptServerResponse({
+    ciphertext,
+    iv,
+    authTag,
+    sequence,
+    keyVersion
+}) {
+    if (!clientSessionKey) {
+        throw new Error('AES Session Key tidak tersedia.');
+    }
+
+    const ciphertextBytes = new Uint8Array(
+        base64ToArrayBuffer(ciphertext)
+    );
+
+    const authTagBytes = new Uint8Array(
+        base64ToArrayBuffer(authTag)
+    );
+
+    const ivBytes = new Uint8Array(
+        base64ToArrayBuffer(iv)
+    );
+
+    if (ivBytes.length !== AES_GCM_IV_LENGTH) {
+        throw new Error('Response IV tidak valid.');
+    }
+
+    if (authTagBytes.length !== AES_GCM_TAG_LENGTH) {
+        throw new Error('Response authentication tag tidak valid.');
+    }
+
+    const aad = new TextEncoder().encode(
+        `${sessionStats.sessionId}:${sequence}:${keyVersion}`
+    );
+
+    const encryptedResponse = new Uint8Array(
+        ciphertextBytes.length + authTagBytes.length
+    );
+
+    encryptedResponse.set(ciphertextBytes, 0);
+
+    encryptedResponse.set(
+        authTagBytes,
+        ciphertextBytes.length
+    );
+
+    const decryptedBuffer = await crypto.subtle.decrypt(
+        {
+            name: 'AES-GCM',
+            iv: ivBytes,
+            additionalData: aad,
+            tagLength: 128
+        },
+        clientSessionKey,
+        encryptedResponse
+    );
+
+    return new TextDecoder('utf-8', {
+        fatal: true
+    }).decode(decryptedBuffer);
+}
+
+// =========================================================
+// 5. HTTP RESPONSE HELPER
+// =========================================================
+
+async function readJsonResponse(response) {
+    const responseText = await response.text();
+
+    let data;
+
+    try {
+        data = responseText
+            ? JSON.parse(responseText)
+            : {};
+    } catch {
+        throw new Error(
+            `Respons server bukan JSON yang valid. HTTP ${response.status}.`
+        );
+    }
+
+    if (!response.ok) {
+        const error = new Error(
+            data?.error ||
+            data?.message ||
+            `Permintaan gagal. HTTP ${response.status}.`
+        );
+
+        // Informasi ini diperlukan untuk mendeteksi
+        // respons ROTATION_REQUIRED dari backend.
+        error.code = data?.code || null;
+        error.status = response.status;
+        error.payload = data;
+
+        throw error;
+    }
+
+    if (data?.status === 'error') {
+        const error = new Error(
+            data.message || 'Server mengembalikan status error.'
+        );
+
+        error.code = data?.code || null;
+        error.status = response.status;
+        error.payload = data;
+
+        throw error;
+    }
+
+    return data;
+}
+
+// =========================================================
+// 6. SESSION UI
+// =========================================================
 
 function applySessionLockUI(isActive) {
-    btnEndSession.disabled = !isActive;
-    btnManualSend.disabled = !isActive;
-    btnBatchStart.disabled = !isActive;
+    if (btnStartSession) {
+        btnStartSession.disabled = isActive;
+    }
+
+    if (btnEndSession) {
+        btnEndSession.disabled = !isActive;
+    }
+
+    // Pengujian manual aktif jika secure session tersedia.
+    if (btnManualSend) {
+        btnManualSend.disabled = !isActive;
+
+        btnManualSend.textContent = isActive
+            ? 'Kirim & Uji AES-256-GCM'
+            : 'Aktifkan Sesi Terlebih Dahulu';
+    }
+
+    // Batch testing belum diaktifkan karena endpoint
+    // dan mekanisme pengukurannya belum divalidasi.
+    if (btnBatchStart) {
+        btnBatchStart.disabled = true;
+
+        btnBatchStart.textContent =
+            'Batch Testing Belum Tersedia';
+    }
+
+    // Rotasi dilakukan otomatis berdasarkan respons backend.
+    if (forceRotateCheckInput) {
+        forceRotateCheckInput.disabled = true;
+
+        forceRotateCheckInput.title =
+            'Rotasi kunci dijalankan otomatis berdasarkan batas pesan atau waktu.';
+    }
 
     if (isActive) {
-        btnManualSend.innerHTML = '&#10148; Kirim &amp; Uji Dynamic Rotation';
-        btnBatchStart.innerHTML = '&#9654; Mulai Batch Testing';
-        if (manualStatusEl.textContent === 'Menunggu aktivasi sesi') {
-            manualStatusEl.textContent = 'Siap';
-            manualSummaryLineEl.textContent = 'Sesi aktif. Menunggu pengujian manual dijalankan.';
-        }
-        if (batchStatusTextEl.textContent === 'Status: Sesi belum aktif') {
-            batchStatusTextEl.textContent = 'Status: Menunggu pengujian';
-        }
+        setText(
+            manualStatusEl,
+            'Secure session berhasil diaktifkan.'
+        );
+
+        setText(
+            manualSummaryLineEl,
+            'Sesi aktif. Pengujian pesan AES-256-GCM siap dilakukan.'
+        );
+
+        setText(
+            batchStatusTextEl,
+            'Status: Menunggu implementasi batch testing.'
+        );
+
     } else {
-        btnManualSend.innerHTML = '&#10148; Aktifkan Sesi Terlebih Dahulu';
-        btnBatchStart.innerHTML = '&#9654; Aktifkan Sesi Terlebih Dahulu';
-        manualStatusEl.textContent = 'Menunggu aktivasi sesi';
-        manualStatusEl.className = '';
-        manualSummaryLineEl.textContent = 'Klik tombol "Mulai Sesi" di atas sebelum melakukan pengujian.';
-        batchStatusTextEl.textContent = 'Status: Sesi belum aktif';
+        setText(
+            manualStatusEl,
+            'Menunggu aktivasi sesi'
+        );
+
+        if (manualStatusEl) {
+            manualStatusEl.className = '';
+        }
+
+        setText(
+            manualSummaryLineEl,
+            'Klik tombol Mulai Sesi untuk membentuk secure session.'
+        );
+
+        setText(
+            batchStatusTextEl,
+            'Status: Sesi belum aktif'
+        );
     }
 }
 
-let lastSyncedRotationMs = 0;
+// =========================================================
+// 7. SESSION STATISTICS
+// =========================================================
 
 function renderSessionStatistics() {
     const now = new Date();
-    statCurrentTimeEl.textContent = formatClockDot(now);
-    statCurrentDateEl.textContent = now.toLocaleDateString('id-ID', {
-        weekday: 'long',
-        day: 'numeric',
-        month: 'long',
-        year: 'numeric'
-    });
 
-    const threshold = sanitizePositiveInt(cfgMaxRequestsInput?.value, 100, MAX_BATCH_REQUESTS);
-    const intervalSec = getRotationIntervalSec();
+    setText(
+        statCurrentTimeEl,
+        formatClockDot(now)
+    );
 
-    statTotalRequestsEl.textContent = `${sessionStats.totalRequests}`;
-    statRotationCountEl.textContent = `${sessionStats.rotationCount}`;
-    statRotationThresholdEl.textContent = `${threshold}`;
-    statIntervalLabelEl.textContent = formatIntervalText(intervalSec);
+    setText(
+        statCurrentDateEl,
+        now.toLocaleDateString('id-ID', {
+            weekday: 'long',
+            day: 'numeric',
+            month: 'long',
+            year: 'numeric'
+        })
+    );
 
-    if (!sessionStats.active || !sessionStats.lastRotationMs) {
-        statSinceLastRotationEl.textContent = '00:00:00';
-        statUntilNextRotationEl.textContent = '00:00:00';
-        statLastRotationClockEl.textContent = '-';
+    setText(
+        statTotalRequestsEl,
+        sessionStats.totalRequests
+    );
+
+    setText(
+        statRotationCountEl,
+        sessionStats.rotationCount
+    );
+
+    setText(
+        statRotationThresholdEl,
+        getRotationThreshold()
+    );
+
+    setText(
+        statIntervalLabelEl,
+        formatIntervalText(getRotationIntervalSec())
+    );
+
+    if (!sessionStats.active) {
+        setText(statSinceLastRotationEl, '00:00:00');
+        setText(statUntilNextRotationEl, 'Belum tersedia');
+        setText(statLastRotationClockEl, '-');
+
         return;
     }
 
-    const elapsedSec = Math.max(0, (Date.now() - sessionStats.lastRotationMs) / 1000);
-    const remainingSec = Math.max(0, intervalSec - elapsedSec);
+    if (sessionStats.lastRotationMs > 0) {
+        const elapsedSeconds = Math.max(
+            0,
+            (Date.now() - sessionStats.lastRotationMs) / 1000
+        );
 
-    statSinceLastRotationEl.textContent = formatDurationHms(elapsedSec);
-    statUntilNextRotationEl.textContent = formatDurationHms(remainingSec);
-    statLastRotationClockEl.textContent = formatClockDot(new Date(sessionStats.lastRotationMs));
+        setText(
+            statSinceLastRotationEl,
+            formatDurationHms(elapsedSeconds)
+        );
 
-    if (elapsedSec >= intervalSec && lastSyncedRotationMs !== sessionStats.lastRotationMs) {
-        lastSyncedRotationMs = sessionStats.lastRotationMs;
-        fetch('/api/session')
-            .then((res) => res.json())
-            .then((data) => {
-                if (data && data.active) {
-                    updateSessionStatusUI({
-                        active: true,
-                        sessionId: data.sessionId,
-                        publicKeyVerified: data.publicKeyVerified ?? true,
-                        keyBits: data.keyBits ?? 2048,
-                        totalRequests: data.totalRequests ?? sessionStats.totalRequests,
-                        rotationCount: data.totalRotations ?? sessionStats.rotationCount,
-                        lastRotationMs: data.lastRotationMs || Date.now()
-                    });
-                }
-            })
-            .catch(() => { });
+        setText(
+            statLastRotationClockEl,
+            formatClockDot(
+                new Date(sessionStats.lastRotationMs)
+            )
+        );
+
+    } else {
+        setText(statSinceLastRotationEl, '00:00:00');
+        setText(statLastRotationClockEl, '-');
     }
+
+    setText(
+        statUntilNextRotationEl,
+        'Rotasi otomatis aktif berdasarkan batas pesan/waktu'
+    );
 }
+
+// =========================================================
+// 8. UPDATE SESSION STATUS UI
+// =========================================================
 
 function updateSessionStatusUI({
-    active,
-    sessionId,
-    publicKeyVerified = true,
+    active = false,
+    sessionId = null,
     keyBits = 2048,
-    totalRequests,
-    rotationCount,
-    lastRotationMs
-}) {
-    if (typeof active === 'boolean') sessionStats.active = active;
-    if (typeof totalRequests === 'number') sessionStats.totalRequests = totalRequests;
-    if (typeof rotationCount === 'number') sessionStats.rotationCount = rotationCount;
-    if (typeof lastRotationMs === 'number' && lastRotationMs > 0) {
-        sessionStats.lastRotationMs = lastRotationMs;
+    totalRequests = 0,
+    rotationCount = 0,
+    lastRotationMs = 0
+} = {}) {
+    sessionStats.active = Boolean(active);
+
+    sessionStats.sessionId = active
+        ? sessionId
+        : null;
+
+    sessionStats.totalRequests =
+        Number(totalRequests) || 0;
+
+    sessionStats.rotationCount =
+        Number(rotationCount) || 0;
+
+    sessionStats.lastRotationMs =
+        Number(lastRotationMs) || 0;
+
+    setText(
+        statusPublicKeyEl,
+        active
+            ? 'Public key diterima'
+            : 'Belum mengambil public key'
+    );
+
+    setText(
+        statusSessionStateEl,
+        active
+            ? 'Session aktif'
+            : 'Sesi belum aktif'
+    );
+
+    if (statusSessionStateEl) {
+        statusSessionStateEl.style.color = active
+            ? '#4ade80'
+            : '#f87171';
     }
 
-    statusPublicKeyEl.textContent = publicKeyVerified ? 'Public key terverifikasi' : 'Belum terverifikasi';
-    statusSessionStateEl.textContent = sessionStats.active ? 'Session aktif' : 'Sesi belum aktif';
-    statusSessionStateEl.style.color = sessionStats.active ? '#fbbf24' : '#f87171';
-    statusSessionIdEl.textContent = sessionStats.active && sessionId ? sessionId : '-';
-    statusPublicKeyBitsEl.textContent = `${keyBits} bit`;
+    setText(
+        statusSessionIdEl,
+        sessionStats.sessionId || '-'
+    );
 
-    applySessionLockUI(sessionStats.active);
+    setText(
+        statusPublicKeyBitsEl,
+        `${keyBits} bit`
+    );
+
+    applySessionLockUI(active);
     renderSessionStatistics();
 }
 
-cfgMaxRequestsInput?.addEventListener('input', () => {
-    renderSessionStatistics();
-});
+// =========================================================
+// 9. GET RSA PUBLIC KEY
+// =========================================================
 
-cfgMaxRequestsInput?.addEventListener('change', () => {
-    getRotationThreshold();
-    renderSessionStatistics();
-});
+async function fetchDynamicPublicKey() {
+    const response = await fetch(
+        `${API_BASE}/public-key`,
+        {
+            method: 'GET',
+            headers: {
+                Accept: 'application/json'
+            },
+            cache: 'no-store'
+        }
+    );
 
-cfgIntervalSecSelect?.addEventListener('change', () => {
-    renderSessionStatistics();
-});
+    const result = await readJsonResponse(response);
 
-async function callSessionEndpoint(action) {
-    const response = await fetch('/api/session', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            action,
-            rotationIntervalMessages: getRotationThreshold(),
-            rotationIntervalSec: getRotationIntervalSec()
-        })
-    });
-    return response.json();
+    if (!result.publicKey) {
+        throw new Error('RSA Public Key tidak ditemukan.');
+    }
+
+    if (result.algorithm !== 'RSA-2048-OAEP-SHA256') {
+        throw new Error('Algoritma RSA Public Key tidak sesuai.');
+    }
+
+    const publicKeyBuffer =
+        base64ToArrayBuffer(result.publicKey);
+
+    serverRsaPublicKey =
+        await crypto.subtle.importKey(
+            'spki',
+            publicKeyBuffer,
+            {
+                name: 'RSA-OAEP',
+                hash: 'SHA-256'
+            },
+            false,
+            ['encrypt']
+        );
+
+    return result;
 }
 
-btnStartSession?.addEventListener('click', async () => {
-    btnStartSession.disabled = true;
+// =========================================================
+// 10. GENERATE AES KEY AND ENCRYPT WITH RSA
+// =========================================================
+
+async function createAndWrapAesSessionKey(publicKeyBase64) {
+    if (!window.crypto || !window.crypto.subtle) {
+        throw new Error(
+            'Web Crypto API tidak tersedia. Gunakan localhost atau HTTPS.'
+        );
+    }
+
+    // Import RSA Public Key.
+    const publicKeyBuffer =
+        base64ToArrayBuffer(publicKeyBase64);
+
+    const rsaPublicKey =
+        await crypto.subtle.importKey(
+            'spki',
+            publicKeyBuffer,
+            {
+                name: 'RSA-OAEP',
+                hash: 'SHA-256'
+            },
+            false,
+            ['encrypt']
+        );
+
+    // Generate AES-256-GCM Session Key.
+    const temporaryAesKey =
+        await crypto.subtle.generateKey(
+            {
+                name: 'AES-GCM',
+                length: 256
+            },
+            true,
+            ['encrypt', 'decrypt']
+        );
+
+    const rawAesKey = new Uint8Array(
+        await crypto.subtle.exportKey(
+            'raw',
+            temporaryAesKey
+        )
+    );
+
     try {
-        const data = await callSessionEndpoint('start');
-        updateSessionStatusUI({
-            active: true,
-            sessionId: data.sessionId,
-            publicKeyVerified: data.publicKeyVerified ?? true,
-            keyBits: data.keyBits ?? 2048,
-            totalRequests: data.totalRequests ?? 0,
-            rotationCount: data.totalRotations ?? 1,
-            lastRotationMs: data.lastRotationMs ?? Date.now()
-        });
-    } catch (err) {
-        console.error('Gagal memulai sesi:', err);
+        // Encrypt AES Session Key menggunakan RSA.
+        const encryptedKeyBuffer =
+            await crypto.subtle.encrypt(
+                {
+                    name: 'RSA-OAEP'
+                },
+                rsaPublicKey,
+                rawAesKey
+            );
+
+        // Import ulang sebagai non-extractable CryptoKey.
+        const clientAesKey =
+            await crypto.subtle.importKey(
+                'raw',
+                rawAesKey,
+                {
+                    name: 'AES-GCM'
+                },
+                false,
+                ['encrypt', 'decrypt']
+            );
+
+        return {
+            encryptedSessionKey:
+                arrayBufferToBase64(encryptedKeyBuffer),
+
+            clientAesKey
+        };
+
     } finally {
-        btnStartSession.disabled = false;
+        // Best effort membersihkan buffer raw AES key.
+        rawAesKey.fill(0);
     }
-});
+}
 
-btnEndSession?.addEventListener('click', async () => {
-    btnEndSession.disabled = true;
+// =========================================================
+// 11. GENERATE NEW SESSION KEY FOR ROTATION
+// =========================================================
+
+async function generateNewSessionKey() {
+    if (!serverRsaPublicKey) {
+        throw new Error('RSA Public Key belum tersedia.');
+    }
+
+    const temporaryKey = await crypto.subtle.generateKey(
+        {
+            name: 'AES-GCM',
+            length: 256
+        },
+        true,
+        ['encrypt', 'decrypt']
+    );
+
+    const rawKey = new Uint8Array(
+        await crypto.subtle.exportKey('raw', temporaryKey)
+    );
+
     try {
-        const data = await callSessionEndpoint('end');
-        sessionStats.lastRotationMs = 0;
-        updateSessionStatusUI({
-            active: false,
-            sessionId: null,
-            publicKeyVerified: data.publicKeyVerified ?? true,
-            keyBits: data.keyBits ?? 2048,
-            totalRequests: data.totalRequests ?? 0,
-            rotationCount: data.totalRotations ?? 0
-        });
-    } catch (err) {
-        console.error('Gagal mengakhiri sesi:', err);
+        const encryptedKey = await crypto.subtle.encrypt(
+            {
+                name: 'RSA-OAEP'
+            },
+            serverRsaPublicKey,
+            rawKey
+        );
+
+        const clientKey = await crypto.subtle.importKey(
+            'raw',
+            rawKey,
+            {
+                name: 'AES-GCM'
+            },
+            false,
+            ['encrypt', 'decrypt']
+        );
+
+        return {
+            clientKey,
+            encryptedNewSessionKey:
+                arrayBufferToBase64(encryptedKey)
+        };
+
+    } finally {
+        rawKey.fill(0);
     }
-});
+}
 
-// Inisialisasi awal & interval tick 1 detik
-updateSessionStatusUI({ active: false, sessionId: null });
-setInterval(renderSessionStatistics, 1000);
+// =========================================================
+// 12. START SECURE SESSION
+// =========================================================
 
-(async function initSessionStatus() {
-    try {
-        const res = await fetch('/api/session');
-        const data = await res.json();
-        updateSessionStatusUI({
-            active: Boolean(data.active),
-            sessionId: data.sessionId || null,
-            publicKeyVerified: data.publicKeyVerified ?? true,
-            keyBits: data.keyBits ?? 2048,
-            totalRequests: data.totalRequests ?? 0,
-            rotationCount: data.totalRotations ?? 0,
-            lastRotationMs: data.lastRotationMs ?? 0
-        });
-    } catch {
-        updateSessionStatusUI({ active: false, sessionId: null });
-    }
-})();
-
-// Sinkronisasi preset & input manual untuk "Batch Testing"
-batchPresetSelect.addEventListener('change', () => {
-    batchCountInput.value = batchPresetSelect.value;
-});
-
-batchCountInput.addEventListener('input', () => {
-    const val = String(batchCountInput.value);
-    const matchingOption = Array.from(batchPresetSelect.options).find((opt) => opt.value === val);
-    if (matchingOption) {
-        batchPresetSelect.value = val;
-    }
-});
-
-async function sendMessageRequest(messageText, seq = null, extraOptions = {}) {
-    if (!sessionStats.active) {
-        throw new Error('Sesi belum aktif. Klik "Mulai Sesi" terlebih dahulu.');
+async function startSecureSession() {
+    if (sessionStats.active) {
+        throw new Error(
+            'Sesi masih aktif. Akhiri sesi terlebih dahulu.'
+        );
     }
 
-    const payload = {
-        scheme: SCHEME_ID,
-        seq,
-        message: messageText,
-        rotationIntervalMessages: getRotationThreshold(),
-        rotationIntervalSec: getRotationIntervalSec(),
-        forceRotate: Boolean(extraOptions.forceRotate),
-        sentAt: new Date().toISOString()
-    };
-
-    const t0 = performance.now();
-    const response = await fetch('/api/message', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-    });
-    const t1 = performance.now();
-
-    const data = await response.json();
-    if (!response.ok) {
-        throw new Error(data?.error || `HTTP ${response.status}`);
+    if (!window.crypto?.subtle) {
+        throw new Error(
+            'Browser tidak mendukung Web Crypto API.'
+        );
     }
 
-    sessionStats.totalRequests += 1;
-    if (data?.crypto?.rotatedThisRequest) {
-        sessionStats.lastRotationMs = Date.now();
+    // STEP 1: Mengambil RSA Public Key dari backend.
+    const publicKeyData =
+        await fetchDynamicPublicKey();
+
+    // STEP 2: Membuat AES Session Key dan mengenkripsinya.
+    const {
+        encryptedSessionKey,
+        clientAesKey
+    } = await createAndWrapAesSessionKey(
+        publicKeyData.publicKey
+    );
+
+    // STEP 3: Mengirim encrypted AES key ke backend.
+    const response = await fetch(
+        `${API_BASE}/session`,
+        {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                Accept: 'application/json'
+            },
+            body: JSON.stringify({
+                encryptedSessionKey,
+                rotationIntervalMessages:
+                    getRotationThreshold(),
+                rotationIntervalSec:
+                    getRotationIntervalSec()
+            })
+        }
+    );
+
+    const result =
+        await readJsonResponse(response);
+
+    const sessionData = result.data || result;
+
+    if (!sessionData.sessionId) {
+        throw new Error(
+            'Session ID tidak ditemukan pada respons backend.'
+        );
     }
 
+    // STEP 4: Menyimpan AES CryptoKey di memori halaman.
+    clientSessionKey = clientAesKey;
+
+    sessionStats.startedAtMs = Date.now();
+
+    sessionStats.keyVersion =
+        Number(sessionData.keyVersion) || 1;
+
+    sessionStats.lastSequence =
+        Number(sessionData.sequence) || 0;
+
+    // STEP 5: Memperbarui tampilan sesi.
     updateSessionStatusUI({
         active: true,
-        sessionId: data?.crypto?.keyId || statusSessionIdEl.textContent,
-        publicKeyVerified: true,
-        keyBits: 2048,
-        totalRequests: sessionStats.totalRequests,
-        rotationCount: typeof data?.crypto?.rotationCount === 'number'
-            ? data.crypto.rotationCount
-            : sessionStats.rotationCount,
-        lastRotationMs: sessionStats.lastRotationMs
+        sessionId: sessionData.sessionId,
+        keyBits: Number(publicKeyData.keyBits) || 2048,
+        totalRequests: Number(sessionData.totalRequests) || 0,
+        rotationCount: Number(sessionData.rotationCount) || 0,
+        lastRotationMs: 0
     });
 
-    const responseTimeMs = Number((t1 - t0).toFixed(3));
-    const serverMs = Number(data?.metrics?.serverProcessMs ?? 0);
-    const latencyMs = Number(Math.max(0.001, responseTimeMs - serverMs).toFixed(3));
-
-    const totalBytes = Number(
-        data?.metrics?.totalBytes ??
-        new TextEncoder().encode(JSON.stringify(payload) + JSON.stringify(data)).length
+    setText(
+        rotSessionBoxEl,
+        `Session ID: ${sessionData.sessionId} | Key Version: ${sessionStats.keyVersion}`
     );
-    const throughputKBs = Number(((totalBytes / 1024) / (responseTimeMs / 1000)).toFixed(3));
+
+    setText(
+        rotIvTagBoxEl,
+        'IV: Belum tersedia | Tag: Belum tersedia'
+    );
+
+    setText(
+        rotCipherBoxEl,
+        'Ciphertext belum tersedia'
+    );
+
+    setText(
+        rotDecryptedBoxEl,
+        'Belum ada pesan yang didekripsi'
+    );
+
+    setText(
+        manualTimingEl,
+        '-'
+    );
+
+    setText(
+        manualSummaryLineEl,
+        'Secure session berhasil dibentuk. AES-256 Session Key telah dibuat di browser dan dikirim ke backend dalam bentuk RSA-OAEP ciphertext.'
+    );
+
+    return sessionData;
+}
+
+// =========================================================
+// 13. END SECURE SESSION
+// =========================================================
+
+async function endSecureSession() {
+    if (
+        !sessionStats.active ||
+        !sessionStats.sessionId
+    ) {
+        throw new Error(
+            'Tidak ada secure session yang aktif.'
+        );
+    }
+
+    const response = await fetch(
+        `${API_BASE}/session/close`,
+        {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                Accept: 'application/json'
+            },
+            body: JSON.stringify({
+                sessionId: sessionStats.sessionId
+            })
+        }
+    );
+
+    const result =
+        await readJsonResponse(response);
+
+    /*
+     * Menghapus referensi AES CryptoKey dari halaman.
+     * Ini tidak menjamin seluruh salinan memori terhapus.
+     */
+
+    clientSessionKey = null;
+
+    sessionStats.startedAtMs = 0;
+    sessionStats.keyVersion = 1;
+    sessionStats.lastSequence = 0;
+
+    lastRotationTime = 0;
+    isProcessingRequest = false;
+
+    updateSessionStatusUI({
+        active: false,
+        sessionId: null,
+        keyBits: 2048,
+        totalRequests: 0,
+        rotationCount: 0,
+        lastRotationMs: 0
+    });
+
+    setText(
+        rotSessionBoxEl,
+        'Key ID: - | Rotasi: - | Pesan pada Kunci: -'
+    );
+
+    setText(
+        rotIvTagBoxEl,
+        'IV: - | Tag: -'
+    );
+
+    setText(
+        rotCipherBoxEl,
+        '-'
+    );
+
+    setText(
+        rotDecryptedBoxEl,
+        '-'
+    );
+
+    setText(
+        manualTimingEl,
+        '-'
+    );
+
+    setText(
+        manualSummaryLineEl,
+        result.message || 'Secure session berhasil ditutup.'
+    );
+
+    return result;
+}
+
+// =========================================================
+// 14. SEND ENCRYPTED MESSAGE
+// POST /api/dynamic-rotation/message
+// =========================================================
+
+async function sendDynamicMessageOnce(message) {
+    if (!sessionStats.active || !sessionStats.sessionId) {
+        throw new Error('Secure Session belum aktif.');
+    }
+
+    if (!clientSessionKey) {
+        throw new Error('AES Session Key tidak tersedia.');
+    }
+
+    if (!message || !message.trim()) {
+        throw new Error('Pesan tidak boleh kosong.');
+    }
+
+    // Sequence berikutnya.
+    const sequence = sessionStats.lastSequence + 1;
+
+    const keyVersion = sessionStats.keyVersion;
+    const sessionId = sessionStats.sessionId;
+
+    const encoder = new TextEncoder();
+
+    // 1. Enkripsi pesan di browser.
+    const encryptionStart = performance.now();
+
+    const encryptedRequest = await encryptClientMessage(
+        message,
+        sequence,
+        keyVersion
+    );
+
+    const encryptionEnd = performance.now();
+
+    const clientEncryptionMs =
+        encryptionEnd - encryptionStart;
+
+    // 2. Siapkan request.
+    const requestBody = {
+        sessionId,
+        sequence,
+        iv: encryptedRequest.iv,
+        ciphertext: encryptedRequest.ciphertext,
+        authTag: encryptedRequest.authTag
+    };
+
+    const requestJson = JSON.stringify(requestBody);
+
+    const requestBytes = encoder.encode(requestJson).length;
+
+    // 3. Kirim ke backend.
+    const requestStart = performance.now();
+
+    const response = await fetch(
+        `${API_BASE}/message`,
+        {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                Accept: 'application/json'
+            },
+            body: requestJson
+        }
+    );
+
+    const result = await readJsonResponse(response);
+
+    const responseEnd = performance.now();
+
+    const responseTimeMs = responseEnd - requestStart;
+
+    const responseData = result.data || result;
+
+    if (
+        !responseData.encryptedResponse ||
+        !responseData.responseIV ||
+        !responseData.responseAuthTag
+    ) {
+        throw new Error(
+            'Respons backend tidak memiliki data enkripsi yang lengkap.'
+        );
+    }
+
+    // Pastikan backend mengembalikan sequence yang sama.
+    if (Number(responseData.sequence) !== sequence) {
+        throw new Error(
+            'Sequence response tidak sesuai dengan sequence request.'
+        );
+    }
+
+    if (Number(responseData.keyVersion) !== keyVersion) {
+        throw new Error(
+            'Key version response tidak sesuai.'
+        );
+    }
+
+    // 4. Dekripsi response.
+    const decryptionStart = performance.now();
+
+    const decryptedResponse = await decryptServerResponse({
+        ciphertext: responseData.encryptedResponse,
+        iv: responseData.responseIV,
+        authTag: responseData.responseAuthTag,
+        sequence,
+        keyVersion
+    });
+
+    const decryptionEnd = performance.now();
+
+    const clientDecryptionMs =
+        decryptionEnd - decryptionStart;
+
+    // 5. Verifikasi hasil.
+    if (decryptedResponse !== message) {
+        throw new Error(
+            'Verifikasi gagal: pesan hasil dekripsi berbeda dari pesan awal.'
+        );
+    }
+
+    // 6. Update sequence hanya setelah verifikasi response.
+    sessionStats.lastSequence = sequence;
+
+    sessionStats.totalRequests =
+        Number(responseData.totalRequests) ||
+        sessionStats.totalRequests + 1;
+
+    renderSessionStatistics();
+
+    const responseBytes = encoder.encode(
+        JSON.stringify(result)
+    ).length;
+
+    // 7. Tampilkan hasil.
+    setText(
+        rotSessionBoxEl,
+        `Session ID: ${sessionId} | Key Version: ${keyVersion} | Sequence: ${sequence} | Total Request: ${sessionStats.totalRequests}`
+    );
+
+    setText(
+        rotIvTagBoxEl,
+        `Request IV: ${encryptedRequest.iv} | Request Tag: ${encryptedRequest.authTag} | Response IV: ${responseData.responseIV} | Response Tag: ${responseData.responseAuthTag}`
+    );
+
+    setText(
+        rotCipherBoxEl,
+        `Request Ciphertext: ${encryptedRequest.ciphertext}\n\nResponse Ciphertext: ${responseData.encryptedResponse}`
+    );
+
+    setText(
+        rotDecryptedBoxEl,
+        decryptedResponse
+    );
+
+    setText(
+        manualStatusEl,
+        `Berhasil — Sequence ${sequence} Terverifikasi`
+    );
+
+    if (manualStatusEl) {
+        manualStatusEl.className = 'text-success';
+    }
+
+    setText(
+        manualTimingEl,
+        `Enkripsi Client: ${clientEncryptionMs.toFixed(3)} ms | Backend Crypto: ${Number(responseData.cryptoProcessMs || 0).toFixed(3)} ms | Dekripsi Client: ${clientDecryptionMs.toFixed(3)} ms`
+    );
+
+    setText(
+        manualSummaryLineEl,
+        `Pesan berhasil dikirim dan diverifikasi. Response Time: ${responseTimeMs.toFixed(3)} ms | Request: ${requestBytes} bytes | Response: ${responseBytes} bytes`
+    );
 
     return {
-        seq: seq ?? 1,
-        httpStatus: response.status,
-        ok: response.ok,
+        success: true,
+        verified: true,
+        sequence,
         responseTimeMs,
-        latencyMs,
-        throughputKBs,
-        totalBytes,
-        cryptoProcessMs: Number(data?.metrics?.cryptoProcessMs ?? data?.crypto?.cryptoProcessMs ?? 0),
-        cpuServerMs: Number(data?.metrics?.cpuServerMs ?? 0),
-        ramRssMb: Number(data?.metrics?.ramRssMb ?? 0),
-        ramHeapMb: Number(data?.metrics?.ramHeapMb ?? 0),
-        crypto: data?.crypto || null,
-        echoMessage: data?.echoMessage ?? ''
+        clientEncryptionMs,
+        clientDecryptionMs,
+        cryptoProcessMs: Number(responseData.cryptoProcessMs || 0),
+        requestBytes,
+        responseBytes,
+        totalBytes: requestBytes + responseBytes
     };
 }
 
-manualForm.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    if (!sessionStats.active) {
-        manualStatusEl.textContent = 'Gagal (Sesi belum aktif)';
-        manualStatusEl.className = 'text-danger';
-        manualSummaryLineEl.textContent = 'Klik tombol "Mulai Sesi" terlebih dahulu.';
-        return;
+// =========================================================
+// 14. SEND ENCRYPTED MESSAGE
+// POST /api/dynamic-rotation/message
+// =========================================================
+
+async function sendDynamicMessageOnce(message) {
+    if (!sessionStats.active || !sessionStats.sessionId) {
+        throw new Error('Secure Session belum aktif.');
     }
 
-    const text = manualMessageInput.value;
-    const isForced = Boolean(forceRotateCheckInput?.checked);
+    if (!clientSessionKey) {
+        throw new Error('AES Session Key tidak tersedia.');
+    }
 
-    btnManualSend.disabled = true;
-    manualStatusEl.textContent = 'Mengirim...';
-    manualStatusEl.className = '';
+    if (!message || !message.trim()) {
+        throw new Error('Pesan tidak boleh kosong.');
+    }
+
+    // Sequence berikutnya.
+    const sequence = sessionStats.lastSequence + 1;
+
+    const keyVersion = sessionStats.keyVersion;
+    const sessionId = sessionStats.sessionId;
+
+    const encoder = new TextEncoder();
+
+    // 1. Enkripsi pesan di browser.
+    const encryptionStart = performance.now();
+
+    const encryptedRequest = await encryptClientMessage(
+        message,
+        sequence,
+        keyVersion
+    );
+
+    const encryptionEnd = performance.now();
+
+    const clientEncryptionMs =
+        encryptionEnd - encryptionStart;
+
+    // 2. Siapkan request.
+    const requestBody = {
+        sessionId,
+        sequence,
+        iv: encryptedRequest.iv,
+        ciphertext: encryptedRequest.ciphertext,
+        authTag: encryptedRequest.authTag
+    };
+
+    const requestJson = JSON.stringify(requestBody);
+
+    const requestBytes = encoder.encode(requestJson).length;
+
+    // 3. Kirim ke backend.
+    const requestStart = performance.now();
+
+    const response = await fetch(
+        `${API_BASE}/message`,
+        {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                Accept: 'application/json'
+            },
+            body: requestJson
+        }
+    );
+
+    const result = await readJsonResponse(response);
+
+    const responseEnd = performance.now();
+
+    const responseTimeMs = responseEnd - requestStart;
+
+    const responseData = result.data || result;
+
+    if (
+        !responseData.encryptedResponse ||
+        !responseData.responseIV ||
+        !responseData.responseAuthTag
+    ) {
+        throw new Error(
+            'Respons backend tidak memiliki data enkripsi yang lengkap.'
+        );
+    }
+
+    // Pastikan backend mengembalikan sequence yang sama.
+    if (Number(responseData.sequence) !== sequence) {
+        throw new Error(
+            'Sequence response tidak sesuai dengan sequence request.'
+        );
+    }
+
+    if (Number(responseData.keyVersion) !== keyVersion) {
+        throw new Error(
+            'Key version response tidak sesuai.'
+        );
+    }
+
+    // 4. Dekripsi response.
+    const decryptionStart = performance.now();
+
+    const decryptedResponse = await decryptServerResponse({
+        ciphertext: responseData.encryptedResponse,
+        iv: responseData.responseIV,
+        authTag: responseData.responseAuthTag,
+        sequence,
+        keyVersion
+    });
+
+    const decryptionEnd = performance.now();
+
+    const clientDecryptionMs =
+        decryptionEnd - decryptionStart;
+
+    // 5. Verifikasi hasil.
+    if (decryptedResponse !== message) {
+        throw new Error(
+            'Verifikasi gagal: pesan hasil dekripsi berbeda dari pesan awal.'
+        );
+    }
+
+    // 6. Update sequence hanya setelah verifikasi response.
+    sessionStats.lastSequence = sequence;
+
+    sessionStats.totalRequests =
+        Number(responseData.totalRequests) ||
+        sessionStats.totalRequests + 1;
+
+    renderSessionStatistics();
+
+    const responseBytes = encoder.encode(
+        JSON.stringify(result)
+    ).length;
+
+    // 7. Tampilkan hasil.
+    setText(
+        rotSessionBoxEl,
+        `Session ID: ${sessionId} | Key Version: ${keyVersion} | Sequence: ${sequence} | Total Request: ${sessionStats.totalRequests}`
+    );
+
+    setText(
+        rotIvTagBoxEl,
+        `Request IV: ${encryptedRequest.iv} | Request Tag: ${encryptedRequest.authTag} | Response IV: ${responseData.responseIV} | Response Tag: ${responseData.responseAuthTag}`
+    );
+
+    setText(
+        rotCipherBoxEl,
+        `Request Ciphertext: ${encryptedRequest.ciphertext}\n\nResponse Ciphertext: ${responseData.encryptedResponse}`
+    );
+
+    setText(
+        rotDecryptedBoxEl,
+        decryptedResponse
+    );
+
+    setText(
+        manualStatusEl,
+        `Berhasil — Sequence ${sequence} Terverifikasi`
+    );
+
+    if (manualStatusEl) {
+        manualStatusEl.className = 'text-success';
+    }
+
+    setText(
+        manualTimingEl,
+        `Enkripsi Client: ${clientEncryptionMs.toFixed(3)} ms | Backend Crypto: ${Number(responseData.cryptoProcessMs || 0).toFixed(3)} ms | Dekripsi Client: ${clientDecryptionMs.toFixed(3)} ms`
+    );
+
+    setText(
+        manualSummaryLineEl,
+        `Pesan berhasil dikirim dan diverifikasi. Response Time: ${responseTimeMs.toFixed(3)} ms | Request: ${requestBytes} bytes | Response: ${responseBytes} bytes`
+    );
+
+    return {
+        success: true,
+        verified: true,
+        sequence,
+        responseTimeMs,
+        clientEncryptionMs,
+        clientDecryptionMs,
+        cryptoProcessMs: Number(responseData.cryptoProcessMs || 0),
+        requestBytes,
+        responseBytes,
+        totalBytes: requestBytes + responseBytes
+    };
+}
+
+// =========================================================
+// SEND MESSAGE WITH AUTOMATIC KEY ROTATION
+// =========================================================
+
+async function sendDynamicMessage(message) {
+    if (isProcessingRequest) {
+        throw new Error(
+            'Masih ada proses komunikasi yang sedang berjalan.'
+        );
+    }
+
+    isProcessingRequest = true;
+
+    const overallStart = performance.now();
 
     try {
-        const result = await sendMessageRequest(text, null, { forceRotate: isForced });
-        if (forceRotateCheckInput) {
-            forceRotateCheckInput.checked = false;
-        }
-
-        manualStatusEl.textContent = result.crypto?.rotatedThisRequest
-            ? 'Berhasil (Kunci Sesi Baru Dirotasi)'
-            : 'Berhasil (Sesi Kunci Aktif)';
-        manualStatusEl.className = 'text-success';
-        manualTimingEl.textContent =
-            `${result.responseTimeMs.toFixed(3)} ms (Latency: ${result.latencyMs.toFixed(3)} ms | Kripto: ${result.cryptoProcessMs.toFixed(3)} ms)`;
-
-        if (result.crypto) {
-            rotSessionBoxEl.textContent =
-                `Key ID: ${result.crypto.keyId} | Rotasi ke-${result.crypto.rotationCount} (${result.crypto.rotationReason}) | Pesan pd Kunci: ${result.crypto.messagesInCurrentKey}`;
-            rotIvTagBoxEl.textContent =
-                `IV: ${result.crypto.ivHex}\nTag: ${result.crypto.authTagHex}`;
-            rotCipherBoxEl.textContent = result.crypto.ciphertextHex || '-';
-            rotDecryptedBoxEl.textContent = result.crypto.decryptedMessage || '-';
-        } else {
-            rotSessionBoxEl.textContent = 'Key ID: - | Rotasi: - | Pesan pd Kunci: -';
-            rotIvTagBoxEl.textContent = 'IV: - | Tag: -';
-            rotCipherBoxEl.textContent = '-';
-            rotDecryptedBoxEl.textContent = result.echoMessage || '-';
-        }
-
-        manualSummaryLineEl.textContent =
-            `Pengujian berhasil. Response: ${result.responseTimeMs.toFixed(3)} ms | Throughput: ${result.throughputKBs.toFixed(2)} KB/s | CPU Server: ${result.cpuServerMs.toFixed(3)} ms`;
-    } catch (err) {
-        manualStatusEl.textContent = `Gagal (${err.message})`;
-        manualStatusEl.className = 'text-danger';
-        manualSummaryLineEl.textContent = `Pengujian gagal: ${err.message}`;
-    } finally {
-        btnManualSend.disabled = !sessionStats.active;
-    }
-});
-
-function renderBatchTable(rows) {
-    if (!rows.length) {
-        batchTableBodyEl.innerHTML =
-            '<tr><td colspan="8" class="empty-cell">Belum ada data pengujian batch.</td></tr>';
-        return;
-    }
-
-    batchTableBodyEl.innerHTML = rows
-        .map(
-            (r) => `
-      <tr>
-        <td>${r.seq}</td>
-        <td>${r.responseTimeMs.toFixed(3)}</td>
-        <td>${r.latencyMs.toFixed(3)}</td>
-        <td>${r.throughputKBs.toFixed(3)}</td>
-        <td>${r.totalBytes}</td>
-        <td>${r.cpuServerMs.toFixed(3)}</td>
-        <td>${r.ramRssMb.toFixed(2)}</td>
-        <td>${r.ramHeapMb.toFixed(2)}</td>
-      </tr>
-    `
-        )
-        .join('');
-}
-
-function updateRecap(rows, batchElapsedMs = lastBatchElapsedMs, isFinished = false) {
-    const total = rows.length;
-    const successRows = rows.filter((r) => r.ok);
-    const successCount = successRows.length;
-    const failedCount = total - successCount;
-
-    recapTotalReqEl.textContent = `${total}`;
-    recapSuccessCountEl.textContent = `${successCount}`;
-    recapFailedCountEl.textContent = `${failedCount}`;
-
-    if (!total) {
-        recapAvgRespEl.textContent = '0.000 ms';
-        recapMinRespEl.textContent = '0.000 ms';
-        recapMaxRespEl.textContent = '0.000 ms';
-        recapTotalTimeEl.textContent = '0.000 ms';
-        recapRpsEl.textContent = '0.000 request/detik';
-        recapSuccessRateEl.textContent = '0.00%';
-        recapAvgLatEl.textContent = '0.000 ms';
-        recapAvgTputEl.textContent = '0.000 KB/s';
-        recapTotalBytesEl.textContent = '0 bytes';
-        recapAvgCpuEl.textContent = '0.000 ms';
-        recapAvgRssEl.textContent = '0.00 MB';
-        recapAvgHeapEl.textContent = '0.00 MB';
-        recapFooterStatusEl.style.display = 'none';
-        exportInfoEl.textContent = 'Hasil pengujian belum tersedia untuk diunduh.';
-        btnExportCsv.disabled = true;
-        return;
-    }
-
-    const successRate = (successCount / total) * 100;
-    recapSuccessRateEl.textContent = `${successRate.toFixed(2)}%`;
-
-    const effectiveElapsedMs = batchElapsedMs > 0
-        ? batchElapsedMs
-        : rows.reduce((acc, r) => acc + (r.responseTimeMs || 0), 0);
-
-    recapTotalTimeEl.textContent = `${effectiveElapsedMs.toFixed(3)} ms`;
-    const rps = effectiveElapsedMs > 0 ? (successCount / (effectiveElapsedMs / 1000)) : 0;
-    recapRpsEl.textContent = `${rps.toFixed(3)} request/detik`;
-
-    const totalBytesSum = rows.reduce((acc, r) => acc + (r.totalBytes || 0), 0);
-    recapTotalBytesEl.textContent = `${totalBytesSum} bytes`;
-
-    if (!successCount) {
-        recapAvgRespEl.textContent = '0.000 ms';
-        recapMinRespEl.textContent = '0.000 ms';
-        recapMaxRespEl.textContent = '0.000 ms';
-        recapAvgLatEl.textContent = '0.000 ms';
-        recapAvgTputEl.textContent = '0.000 KB/s';
-        recapAvgCpuEl.textContent = '0.000 ms';
-        recapAvgRssEl.textContent = '0.00 MB';
-        recapAvgHeapEl.textContent = '0.00 MB';
-    } else {
-        const respList = successRows.map((r) => r.responseTimeMs);
-        const avg = (arr, key) => arr.reduce((acc, item) => acc + item[key], 0) / arr.length;
-
-        recapAvgRespEl.textContent = `${(respList.reduce((a, b) => a + b, 0) / respList.length).toFixed(3)} ms`;
-        recapMinRespEl.textContent = `${Math.min(...respList).toFixed(3)} ms`;
-        recapMaxRespEl.textContent = `${Math.max(...respList).toFixed(3)} ms`;
-
-        recapAvgLatEl.textContent = `${avg(successRows, 'latencyMs').toFixed(3)} ms`;
-        recapAvgTputEl.textContent = `${avg(successRows, 'throughputKBs').toFixed(3)} KB/s`;
-        recapAvgCpuEl.textContent = `${avg(successRows, 'cpuServerMs').toFixed(3)} ms`;
-        recapAvgRssEl.textContent = `${avg(successRows, 'ramRssMb').toFixed(2)} MB`;
-        recapAvgHeapEl.textContent = `${avg(successRows, 'ramHeapMb').toFixed(2)} MB`;
-    }
-
-    if (isFinished) {
-        recapFooterStatusEl.style.display = 'inline-block';
-        exportInfoEl.textContent = 'Hasil pengujian siap diunduh.';
-        btnExportCsv.disabled = false;
-    } else {
-        recapFooterStatusEl.style.display = 'none';
-        exportInfoEl.textContent = `Sedang memproses ${total} baris data...`;
-        btnExportCsv.disabled = true;
-    }
-}
-
-function sleep(ms) {
-    return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-batchForm.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    if (!sessionStats.active) {
-        batchStatusTextEl.textContent = 'Status: Aktifkan sesi terlebih dahulu sebelum batch testing';
-        return;
-    }
-
-    const count = sanitizePositiveInt(batchCountInput.value, 1, MAX_BATCH_REQUESTS);
-    batchCountInput.value = count;
-
-    const prefix = batchPrefixInput.value || 'Dynamic Rotation Batch #';
-
-    batchRecords = [];
-    lastBatchElapsedMs = 0;
-    renderBatchTable(batchRecords);
-    updateRecap(batchRecords, 0, false);
-
-    btnBatchStart.disabled = true;
-    btnManualSend.disabled = true;
-    batchStatusTextEl.textContent = 'Status: Sedang berjalan...';
-    progressTextEl.textContent = `0 / ${count}`;
-    progressFillEl.style.width = '0%';
-
-    const batchStartT = performance.now();
-
-    for (let i = 1; i <= count; i++) {
-        if (!sessionStats.active) break;
+        let rotationResult = null;
+        let messageResult;
 
         try {
-            const res = await sendMessageRequest(`${prefix} ${i}`, i);
-            batchRecords.push(res);
-        } catch (err) {
-            batchRecords.push({
-                seq: i,
-                httpStatus: 0,
-                ok: false,
-                responseTimeMs: 0,
-                latencyMs: 0,
-                throughputKBs: 0,
-                totalBytes: 0,
-                cryptoProcessMs: 0,
-                cpuServerMs: 0,
-                ramRssMb: 0,
-                ramHeapMb: 0
-            });
+            // Percobaan pertama mengirim pesan.
+            messageResult = await sendDynamicMessageOnce(message);
+
+        } catch (error) {
+
+            // Jika server meminta rotasi, lakukan rotasi otomatis.
+            if (
+                error.code !== 'ROTATION_REQUIRED' ||
+                error.status !== 409
+            ) {
+                throw error;
+            }
+
+            console.log(
+                '[DYNAMIC ROTATION] Server meminta rotasi kunci.'
+            );
+
+            rotationResult = await requestDynamicRotation();
+
+            console.log(
+                '[DYNAMIC ROTATION] Rotasi berhasil:',
+                rotationResult
+            );
+
+            // Kirim ulang pesan menggunakan key dan sequence baru.
+            messageResult = await sendDynamicMessageOnce(message);
         }
 
-        lastBatchElapsedMs = Number((performance.now() - batchStartT).toFixed(3));
+        const totalElapsedMs =
+            performance.now() - overallStart;
 
-        const pct = Math.round((i / count) * 100);
-        progressTextEl.textContent = `${i} / ${count}`;
-        progressFillEl.style.width = `${pct}%`;
+        setText(
+            manualTimingEl,
+            `Response Time Total: ${totalElapsedMs.toFixed(3)} ms | Waktu Rotasi: ${(rotationResult?.rotationTimeMs || 0).toFixed(3)} ms`
+        );
 
-        renderBatchTable(batchRecords);
-        updateRecap(batchRecords, lastBatchElapsedMs, false);
+        return {
+            ...messageResult,
 
-        if (i < count) {
-            await sleep(10);
+            // Waktu total mencakup rotasi dan pengiriman ulang.
+            responseTimeMs: totalElapsedMs,
+
+            rotationPerformed: Boolean(rotationResult),
+
+            rotationTimeMs:
+                rotationResult?.rotationTimeMs || 0,
+
+            requestBytes:
+                messageResult.requestBytes +
+                (rotationResult?.requestBytes || 0),
+
+            responseBytes:
+                messageResult.responseBytes +
+                (rotationResult?.responseBytes || 0),
+
+            totalBytes:
+                messageResult.totalBytes +
+                (rotationResult?.totalBytes || 0)
+        };
+
+    } finally {
+        isProcessingRequest = false;
+    }
+}
+
+
+// =========================================================
+// 12. START SESSION BUTTON
+// =========================================================
+
+btnStartSession?.addEventListener(
+    'click',
+    async () => {
+        btnStartSession.disabled = true;
+
+        setText(
+            statusSessionStateEl,
+            'Membentuk secure session...'
+        );
+
+        setText(
+            manualStatusEl,
+            'Mengambil RSA Public Key...'
+        );
+
+        if (manualStatusEl) {
+            manualStatusEl.className = '';
+        }
+
+        try {
+            await startSecureSession();
+
+            setText(
+                manualStatusEl,
+                'Berhasil — Secure Session Aktif'
+            );
+
+            if (manualStatusEl) {
+                manualStatusEl.className = 'text-success';
+            }
+
+        } catch (error) {
+            console.error(
+                'Gagal mengaktifkan sesi:',
+                error
+            );
+
+            clientSessionKey = null;
+
+            updateSessionStatusUI({
+                active: false
+            });
+
+            setText(
+                manualStatusEl,
+                `Gagal: ${error.message}`
+            );
+
+            if (manualStatusEl) {
+                manualStatusEl.className = 'text-danger';
+            }
+
+            setText(
+                manualSummaryLineEl,
+                error.message
+            );
+
+        } finally {
+            btnStartSession.disabled =
+                sessionStats.active;
         }
     }
+);
 
-    lastBatchElapsedMs = Number((performance.now() - batchStartT).toFixed(3));
-    updateRecap(batchRecords, lastBatchElapsedMs, true);
+// =========================================================
+// 13. END SESSION BUTTON
+// =========================================================
 
-    batchStatusTextEl.textContent = 'Status: Pengujian selesai';
-    applySessionLockUI(sessionStats.active);
-});
+btnEndSession?.addEventListener(
+    'click',
+    async () => {
+        btnEndSession.disabled = true;
 
-btnExportCsv.addEventListener('click', () => {
-    if (!batchRecords.length) return;
+        setText(
+            statusSessionStateEl,
+            'Menutup secure session...'
+        );
 
-    const headers = [
-        'Request',
-        'Status HTTP',
-        'Response Time (ms)',
-        'Latency (ms)',
-        'Throughput (KB/s)',
-        'Total Bytes',
-        'Crypto Process (ms)',
-        'CPU Server (ms)',
-        'RAM RSS (MB)',
-        'RAM Heap (MB)'
+        try {
+            await endSecureSession();
+
+            setText(
+                manualStatusEl,
+                'Sesi berhasil ditutup'
+            );
+
+            if (manualStatusEl) {
+                manualStatusEl.className = 'text-success';
+            }
+
+        } catch (error) {
+            console.error(
+                'Gagal menutup sesi:',
+                error
+            );
+
+            setText(
+                manualStatusEl,
+                `Gagal menutup sesi: ${error.message}`
+            );
+
+            if (manualStatusEl) {
+                manualStatusEl.className = 'text-danger';
+            }
+
+        } finally {
+            btnEndSession.disabled =
+                !sessionStats.active;
+        }
+    }
+);
+
+// =========================================================
+// 14. ROTATION CONFIGURATION EVENTS
+// =========================================================
+
+cfgMaxRequestsInput?.addEventListener(
+    'input',
+    renderSessionStatistics
+);
+
+cfgMaxRequestsInput?.addEventListener(
+    'change',
+    () => {
+        getRotationThreshold();
+        renderSessionStatistics();
+    }
+);
+
+cfgIntervalSecSelect?.addEventListener(
+    'change',
+    renderSessionStatistics
+);
+
+// =========================================================
+// 15. BATCH INPUT CONFIGURATION
+// =========================================================
+
+if (batchPresetSelect && batchCountInput) {
+    batchPresetSelect.addEventListener(
+        'change',
+        () => {
+            batchCountInput.value =
+                batchPresetSelect.value;
+        }
+    );
+
+    batchCountInput.addEventListener(
+        'input',
+        () => {
+            const value = String(batchCountInput.value);
+
+            const matchingOption =
+                Array.from(batchPresetSelect.options)
+                    .find((option) => option.value === value);
+
+            if (matchingOption) {
+                batchPresetSelect.value = value;
+            }
+        }
+    );
+}
+
+// =========================================================
+// 16. MANUAL TESTING
+// =========================================================
+
+manualForm?.addEventListener(
+    'submit',
+    async (event) => {
+        event.preventDefault();
+
+        if (!sessionStats.active || !clientSessionKey) {
+            setText(
+                manualStatusEl,
+                'Aktifkan secure session terlebih dahulu.'
+            );
+
+            if (manualStatusEl) {
+                manualStatusEl.className = 'text-danger';
+            }
+
+            return;
+        }
+
+        const message = manualMessageInput?.value || '';
+
+        if (!message.trim()) {
+            setText(
+                manualStatusEl,
+                'Pesan tidak boleh kosong.'
+            );
+
+            if (manualStatusEl) {
+                manualStatusEl.className = 'text-danger';
+            }
+
+            return;
+        }
+
+        btnManualSend.disabled = true;
+
+        btnManualSend.textContent = 'Mengirim Pesan...';
+
+        setText(
+            manualStatusEl,
+            'Mengenkripsi dan mengirim pesan...'
+        );
+
+        if (manualStatusEl) {
+            manualStatusEl.className = '';
+        }
+
+        try {
+            const result = await sendDynamicMessage(message);
+
+            console.log(
+                '[DYNAMIC ROTATION] Manual test berhasil:',
+                result
+            );
+
+        } catch (error) {
+            console.error(
+                '[DYNAMIC ROTATION] Manual test gagal:',
+                error
+            );
+
+            setText(
+                manualStatusEl,
+                `Pengujian gagal: ${error.message}`
+            );
+
+            if (manualStatusEl) {
+                manualStatusEl.className = 'text-danger';
+            }
+
+            setText(
+                manualSummaryLineEl,
+                error.message
+            );
+
+        } finally {
+            btnManualSend.disabled = !sessionStats.active;
+
+            btnManualSend.textContent =
+                sessionStats.active
+                    ? 'Kirim & Uji AES-256-GCM'
+                    : 'Aktifkan Sesi Terlebih Dahulu';
+        }
+    }
+);
+
+// =========================================================
+// 17. BATCH TESTING
+// =========================================================
+
+batchForm?.addEventListener(
+    'submit',
+    (event) => {
+        event.preventDefault();
+
+        if (!sessionStats.active) {
+            setText(
+                batchStatusTextEl,
+                'Status: Aktifkan sesi terlebih dahulu.'
+            );
+
+            return;
+        }
+
+        setText(
+            batchStatusTextEl,
+            'Status: Batch testing menunggu endpoint komunikasi Dynamic Rotation.'
+        );
+    }
+);
+
+// =========================================================
+// 18. RESET RECAP
+// =========================================================
+
+function resetRecap() {
+    const defaults = [
+        [recapTotalReqEl, '0'],
+        [recapSuccessCountEl, '0'],
+        [recapFailedCountEl, '0'],
+
+        [recapAvgRespEl, '0.000 ms'],
+        [recapMinRespEl, '0.000 ms'],
+        [recapMaxRespEl, '0.000 ms'],
+
+        [recapTotalTimeEl, '0.000 ms'],
+        [recapRpsEl, '0.000 request/detik'],
+        [recapSuccessRateEl, '0.00%'],
+
+        [recapAvgLatEl, '0.000 ms'],
+        [recapAvgTputEl, '0.000 KB/s'],
+        [recapTotalBytesEl, '0 bytes'],
+
+        [recapAvgCpuEl, '0.000 ms'],
+        [recapAvgRssEl, '0.00 MB'],
+        [recapAvgHeapEl, '0.00 MB']
     ];
 
-    const lines = [
-        headers.join(','),
-        ...batchRecords.map((r) =>
-            [
-                r.seq,
-                r.httpStatus,
-                r.responseTimeMs,
-                r.latencyMs,
-                r.throughputKBs,
-                r.totalBytes,
-                r.cryptoProcessMs,
-                r.cpuServerMs,
-                r.ramRssMb,
-                r.ramHeapMb
-            ].join(',')
+    defaults.forEach(([element, value]) => {
+        setText(element, value);
+    });
+
+    if (recapFooterStatusEl) {
+        recapFooterStatusEl.style.display = 'none';
+    }
+
+    setText(
+        exportInfoEl,
+        'Hasil pengujian belum tersedia untuk diunduh.'
+    );
+
+    if (btnExportCsv) {
+        btnExportCsv.disabled = true;
+    }
+}
+
+
+async function createRotationCommand(
+    sequence,
+    oldKeyVersion,
+    encryptedNewSessionKey
+) {
+    if (!clientSessionKey) {
+        throw new Error('AES Session Key lama tidak tersedia.');
+    }
+
+    const iv = crypto.getRandomValues(
+        new Uint8Array(AES_GCM_IV_LENGTH)
+    );
+
+    const aad = new TextEncoder().encode(
+        `${sessionStats.sessionId}:${sequence}:${oldKeyVersion}:ROTATE:${encryptedNewSessionKey}`
+    );
+
+    const plaintext = new TextEncoder().encode('ROTATE');
+
+    const encrypted = await crypto.subtle.encrypt(
+        {
+            name: 'AES-GCM',
+            iv,
+            additionalData: aad,
+            tagLength: 128
+        },
+        clientSessionKey,
+        plaintext
+    );
+
+    const bytes = new Uint8Array(encrypted);
+
+    return {
+        iv: arrayBufferToBase64(iv),
+        ciphertext: arrayBufferToBase64(
+            bytes.slice(0, bytes.length - AES_GCM_TAG_LENGTH)
+        ),
+        authTag: arrayBufferToBase64(
+            bytes.slice(bytes.length - AES_GCM_TAG_LENGTH)
         )
-    ];
+    };
+}
 
-    const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `hasil-dynamic-rotation-${Date.now()}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+async function verifyRotationAcknowledgement(
+    response,
+    newSessionKey,
+    sequence,
+    newKeyVersion
+) {
+    const ciphertext = new Uint8Array(
+        base64ToArrayBuffer(response.encryptedAcknowledgement)
+    );
+
+    const iv = new Uint8Array(
+        base64ToArrayBuffer(response.acknowledgementIV)
+    );
+
+    const authTag = new Uint8Array(
+        base64ToArrayBuffer(response.acknowledgementAuthTag)
+    );
+
+    if (
+        iv.length !== AES_GCM_IV_LENGTH ||
+        authTag.length !== AES_GCM_TAG_LENGTH
+    ) {
+        throw new Error('Format konfirmasi rotasi tidak valid.');
+    }
+
+    const combined = new Uint8Array(
+        ciphertext.length + authTag.length
+    );
+
+    combined.set(ciphertext);
+    combined.set(authTag, ciphertext.length);
+
+    const aad = new TextEncoder().encode(
+        `${sessionStats.sessionId}:${sequence}:${newKeyVersion}:ROTATE_ACK`
+    );
+
+    const decrypted = await crypto.subtle.decrypt(
+        {
+            name: 'AES-GCM',
+            iv,
+            additionalData: aad,
+            tagLength: 128
+        },
+        newSessionKey,
+        combined
+    );
+
+    const acknowledgement = new TextDecoder(
+        'utf-8',
+        { fatal: true }
+    ).decode(decrypted);
+
+    const expected =
+        `${sessionStats.sessionId}:${sequence}:${newKeyVersion}:ROTATED`;
+
+    if (acknowledgement !== expected) {
+        throw new Error('Konfirmasi rotasi tidak valid.');
+    }
+
+    return true;
+}
+
+async function createRotationCommit(
+    sequence,
+    newKeyVersion,
+    newSessionKey
+) {
+    const sessionId = sessionStats.sessionId;
+
+    const plaintext = `COMMIT:${sessionId}:${sequence}:${newKeyVersion}`;
+
+    const additionalData = new TextEncoder().encode(
+        `${sessionId}:${sequence}:${newKeyVersion}:ROTATE_COMMIT`
+    );
+
+    const iv = crypto.getRandomValues(
+        new Uint8Array(AES_GCM_IV_LENGTH)
+    );
+
+    const encrypted = await crypto.subtle.encrypt(
+        {
+            name: 'AES-GCM',
+            iv: iv,
+            additionalData: additionalData,
+            tagLength: 128
+        },
+        newSessionKey,
+        new TextEncoder().encode(plaintext)
+    );
+
+    const encryptedBytes = new Uint8Array(encrypted);
+
+    const tagLength = AES_GCM_TAG_LENGTH;
+
+    const ciphertext = encryptedBytes.slice(
+        0,
+        encryptedBytes.length - tagLength
+    );
+
+    const authTag = encryptedBytes.slice(
+        encryptedBytes.length - tagLength
+    );
+
+    return {
+        iv: arrayBufferToBase64(iv),
+        ciphertext: arrayBufferToBase64(ciphertext),
+        authTag: arrayBufferToBase64(authTag)
+    };
+}
+
+// =========================================================
+// DYNAMIC SESSION KEY ROTATION
+// POST /api/dynamic-rotation/rotate
+// =========================================================
+
+async function requestDynamicRotation() {
+    if (!sessionStats.active || !sessionStats.sessionId) {
+        throw new Error('Tidak ada secure session aktif untuk dirotasi.');
+    }
+
+    if (!clientSessionKey) {
+        throw new Error('AES Session Key lama tidak tersedia.');
+    }
+
+    const rotationStart = performance.now();
+
+    const sequence = sessionStats.lastSequence + 1;
+    const oldKeyVersion = sessionStats.keyVersion;
+
+    // 1. Buat AES Session Key baru dan bungkus menggunakan RSA.
+    const {
+        clientKey: newSessionKey,
+        encryptedNewSessionKey
+    } = await generateNewSessionKey();
+
+    // 2. Buat perintah ROTATE menggunakan AES key lama.
+    const rotationCommand = await createRotationCommand(
+        sequence,
+        oldKeyVersion,
+        encryptedNewSessionKey
+    );
+
+    const requestBody = {
+        sessionId: sessionStats.sessionId,
+        sequence,
+        iv: rotationCommand.iv,
+        ciphertext: rotationCommand.ciphertext,
+        authTag: rotationCommand.authTag,
+        encryptedNewSessionKey
+    };
+
+    const encoder = new TextEncoder();
+    const requestJson = JSON.stringify(requestBody);
+    const requestBytes = encoder.encode(requestJson).length;
+
+    // 3. Kirim permintaan rotasi ke backend.
+    const response = await fetch(
+        `${API_BASE}/rotate`,
+        {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                Accept: 'application/json'
+            },
+            body: requestJson
+        }
+    );
+
+    const result = await readJsonResponse(response);
+    const responseData = result.data || result;
+
+    const responseBytes = encoder.encode(
+        JSON.stringify(result)
+    ).length;
+
+    // 4. Validasi session, sequence, dan key version.
+    const newKeyVersion = Number(responseData.keyVersion);
+
+    if (responseData.sessionId !== sessionStats.sessionId) {
+        throw new Error('Session ID pada respons rotasi tidak sesuai.');
+    }
+
+    if (Number(responseData.sequence) !== sequence) {
+        throw new Error('Sequence pada respons rotasi tidak sesuai.');
+    }
+
+    if (newKeyVersion !== oldKeyVersion + 1) {
+        throw new Error('Key version baru tidak sesuai.');
+    }
+
+    // 5. Verifikasi acknowledgement dengan AES key baru.
+    await verifyRotationAcknowledgement(
+        responseData,
+        newSessionKey,
+        sequence,
+        newKeyVersion
+    );
+
+    // 6. Ganti key client hanya setelah acknowledgement valid.
+    clientSessionKey = newSessionKey;
+
+    sessionStats.keyVersion = newKeyVersion;
+    sessionStats.lastSequence = sequence;
+
+    sessionStats.totalRequests =
+        Number(responseData.totalRequests) ||
+        sessionStats.totalRequests + 1;
+
+    sessionStats.rotationCount =
+        Number(responseData.rotationCount) ||
+        sessionStats.rotationCount + 1;
+
+    sessionStats.lastRotationMs = Date.now();
+
+    lastRotationTime = Date.now();
+
+    renderSessionStatistics();
+
+    const rotationTimeMs =
+        performance.now() - rotationStart;
+
+    setText(
+        manualStatusEl,
+        `Rotasi berhasil — Key Version ${newKeyVersion}`
+    );
+
+    if (manualStatusEl) {
+        manualStatusEl.className = 'text-success';
+    }
+
+    setText(
+        manualSummaryLineEl,
+        `Dynamic Session Key Rotation berhasil. Sequence: ${sequence} | Key Version: ${newKeyVersion} | Waktu rotasi: ${rotationTimeMs.toFixed(3)} ms`
+    );
+
+    return {
+        success: true,
+        sequence,
+        keyVersion: newKeyVersion,
+        rotationTimeMs,
+        requestBytes,
+        responseBytes,
+        totalBytes: requestBytes + responseBytes
+    };
+}
+
+// =========================================================
+// 19. EXPORT CSV
+// =========================================================
+
+btnExportCsv?.addEventListener(
+    'click',
+    () => {
+        if (!batchRecords.length) {
+            return;
+        }
+
+        const headers = [
+            'Request',
+            'Status HTTP',
+            'Response Time (ms)',
+            'Latency (ms)',
+            'Throughput (KB/s)',
+            'Total Bytes',
+            'Crypto Process (ms)',
+            'CPU Server (ms)',
+            'RAM RSS (MB)',
+            'RAM Heap (MB)'
+        ];
+
+        const rows = batchRecords.map((record) => [
+            record.seq,
+            record.httpStatus,
+            record.responseTimeMs,
+            record.latencyMs,
+            record.throughputKBs,
+            record.totalBytes,
+            record.cryptoProcessMs,
+            record.cpuServerMs,
+            record.ramRssMb,
+            record.ramHeapMb
+        ]);
+
+        const csv = [headers, ...rows]
+            .map((row) => {
+                return row.map((value) => {
+                    const text = String(value ?? '');
+                    return `"${text.replace(/"/g, '""')}"`;
+                }).join(',');
+            })
+            .join('\r\n');
+
+        const blob = new Blob(
+            ['\uFEFF', csv],
+            {
+                type: 'text/csv;charset=utf-8;'
+            }
+        );
+
+        const url = URL.createObjectURL(blob);
+        const anchor = document.createElement('a');
+
+        anchor.href = url;
+        anchor.download =
+            `hasil-dynamic-rotation-${Date.now()}.csv`;
+
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+
+        URL.revokeObjectURL(url);
+    }
+);
+
+// =========================================================
+// 20. INITIALIZATION
+// =========================================================
+
+/*
+ * Sesi tidak dipulihkan setelah halaman direload.
+ *
+ * Session ID tidak dapat digunakan untuk memulihkan AES
+ * CryptoKey yang sebelumnya hanya tersimpan di memori browser.
+ */
+
+updateSessionStatusUI({
+    active: false,
+    sessionId: null,
+    keyBits: 2048,
+    totalRequests: 0,
+    rotationCount: 0,
+    lastRotationMs: 0
 });
+
+resetRecap();
+
+if (batchTableBodyEl) {
+    batchTableBodyEl.innerHTML =
+        '<tr><td colspan="8" class="empty-cell">Belum ada data pengujian batch.</td></tr>';
+}
+
+setText(
+    statusPublicKeyEl,
+    'Public key akan diambil saat tombol Mulai Sesi ditekan'
+);
+
+renderSessionStatistics();
+
+window.setInterval(
+    renderSessionStatistics,
+    1000
+);
+
+// =========================================================
+// 21. DEBUGGING
+// =========================================================
+
+console.log(
+    `[${SCHEME_ID}] Dynamic Rotation frontend berhasil dimuat.`
+);
+
+// // =========================================================
+// // 5. HTTP RESPONSE HELPER
+// // =========================================================
+
+// async function readJsonResponse(response) {
+//     const responseText = await response.text();
+
+//     let data;
+
+//     try {
+//         data = responseText
+//             ? JSON.parse(responseText)
+//             : {};
+//     } catch {
+//         throw new Error(
+//             `Respons server bukan JSON yang valid. HTTP ${response.status}.`
+//         );
+//     }
+
+//     if (!response.ok) {
+//         const error = new Error(
+//             data?.error ||
+//             data?.message ||
+//             `Permintaan gagal. HTTP ${response.status}.`
+//         );
+
+//         error.code = data?.code || null;
+//         error.status = response.status;
+//         error.payload = data;
+
+//         throw error;
+//     }
+
+//     if (data?.status === 'error') {
+//         throw new Error(
+//             data.message || 'Server mengembalikan status error.'
+//         );
+//     }
+
+//     return data;
+// }
+
+// // =========================================================
+// // 6. SESSION UI
+// // =========================================================
+
+// function applySessionLockUI(isActive) {
+//     if (btnStartSession) {
+//         btnStartSession.disabled = isActive;
+//     }
+
+//     if (btnEndSession) {
+//         btnEndSession.disabled = !isActive;
+//     }
+
+//     // Pengujian manual aktif jika secure session tersedia.
+//     if (btnManualSend) {
+//         btnManualSend.disabled = !isActive;
+
+//         btnManualSend.textContent = isActive
+//             ? 'Kirim & Uji AES-256-GCM'
+//             : 'Aktifkan Sesi Terlebih Dahulu';
+//     }
+
+//     // Batch testing menunggu implementasi dan validasi manual.
+//     if (btnBatchStart) {
+//         btnBatchStart.disabled = true;
+
+//         btnBatchStart.textContent =
+//             'Batch Testing Belum Tersedia';
+//     }
+
+//     if (forceRotateCheckInput) {
+//         forceRotateCheckInput.disabled = true;
+//         forceRotateCheckInput.title =
+//             'Rotasi kunci dijalankan otomatis berdasarkan batas pesan atau waktu.';
+//     }
+
+//     if (isActive) {
+//         setText(
+//             manualStatusEl,
+//             'Secure session berhasil diaktifkan.'
+//         );
+
+//         setText(
+//             manualSummaryLineEl,
+//             'Sesi aktif. Pengujian pesan AES-256-GCM siap dilakukan.'
+//         );
+
+//         setText(
+//             batchStatusTextEl,
+//             'Status: Menunggu implementasi batch testing.'
+//         );
+
+//     } else {
+//         setText(
+//             manualStatusEl,
+//             'Menunggu aktivasi sesi'
+//         );
+
+//         if (manualStatusEl) {
+//             manualStatusEl.className = '';
+//         }
+
+//         setText(
+//             manualSummaryLineEl,
+//             'Klik tombol Mulai Sesi untuk membentuk secure session.'
+//         );
+
+//         setText(
+//             batchStatusTextEl,
+//             'Status: Sesi belum aktif'
+//         );
+//     }
+// }
+
+// // =========================================================
+// // 7. SESSION STATISTICS
+// // =========================================================
+
+// function renderSessionStatistics() {
+//     const now = new Date();
+
+//     setText(
+//         statCurrentTimeEl,
+//         formatClockDot(now)
+//     );
+
+//     setText(
+//         statCurrentDateEl,
+//         now.toLocaleDateString('id-ID', {
+//             weekday: 'long',
+//             day: 'numeric',
+//             month: 'long',
+//             year: 'numeric'
+//         })
+//     );
+
+//     setText(
+//         statTotalRequestsEl,
+//         sessionStats.totalRequests
+//     );
+
+//     setText(
+//         statRotationCountEl,
+//         sessionStats.rotationCount
+//     );
+
+//     setText(
+//         statRotationThresholdEl,
+//         getRotationThreshold()
+//     );
+
+//     setText(
+//         statIntervalLabelEl,
+//         formatIntervalText(getRotationIntervalSec())
+//     );
+
+//     /*
+//      * Belum ada rotasi aktual.
+//      * Countdown tidak boleh dianggap sebagai bukti rotasi.
+//      */
+
+//     if (!sessionStats.active) {
+//         setText(statSinceLastRotationEl, '00:00:00');
+//         setText(statUntilNextRotationEl, 'Belum tersedia');
+//         setText(statLastRotationClockEl, '-');
+
+//         return;
+//     }
+
+//     if (sessionStats.lastRotationMs > 0) {
+//         const elapsedSeconds = Math.max(
+//             0,
+//             (Date.now() - sessionStats.lastRotationMs) / 1000
+//         );
+
+//         setText(
+//             statSinceLastRotationEl,
+//             formatDurationHms(elapsedSeconds)
+//         );
+
+//         setText(
+//             statLastRotationClockEl,
+//             formatClockDot(
+//                 new Date(sessionStats.lastRotationMs)
+//             )
+//         );
+//     } else {
+//         setText(statSinceLastRotationEl, '00:00:00');
+//         setText(statLastRotationClockEl, '-');
+//     }
+
+//     setText(
+//         statUntilNextRotationEl,
+//         'Menunggu implementasi rotasi'
+//     );
+// }
+
+// function updateSessionStatusUI({
+//     active = false,
+//     sessionId = null,
+//     keyBits = 2048,
+//     totalRequests = 0,
+//     rotationCount = 0,
+//     lastRotationMs = 0
+// } = {}) {
+//     sessionStats.active = Boolean(active);
+
+//     sessionStats.sessionId = active
+//         ? sessionId
+//         : null;
+
+//     sessionStats.totalRequests =
+//         Number(totalRequests) || 0;
+
+//     sessionStats.rotationCount =
+//         Number(rotationCount) || 0;
+
+//     sessionStats.lastRotationMs =
+//         Number(lastRotationMs) || 0;
+
+//     setText(
+//         statusPublicKeyEl,
+//         active
+//             ? 'Public key diterima'
+//             : 'Belum mengambil public key'
+//     );
+
+//     setText(
+//         statusSessionStateEl,
+//         active
+//             ? 'Session aktif'
+//             : 'Sesi belum aktif'
+//     );
+
+//     if (statusSessionStateEl) {
+//         statusSessionStateEl.style.color = active
+//             ? '#4ade80'
+//             : '#f87171';
+//     }
+
+//     setText(
+//         statusSessionIdEl,
+//         sessionStats.sessionId || '-'
+//     );
+
+//     setText(
+//         statusPublicKeyBitsEl,
+//         `${keyBits} bit`
+//     );
+
+//     applySessionLockUI(active);
+//     renderSessionStatistics();
+// }
+
+// // =========================================================
+// // 8. GET RSA PUBLIC KEY
+// // =========================================================
+
+
+// async function fetchDynamicPublicKey() {
+//     const response = await fetch(
+//         `${API_BASE}/public-key`,
+//         {
+//             method: 'GET',
+//             headers: {
+//                 Accept: 'application/json'
+//             },
+//             cache: 'no-store'
+//         }
+//     );
+
+//     const result = await readJsonResponse(response);
+
+//     if (!result.publicKey) {
+//         throw new Error('RSA Public Key tidak ditemukan.');
+//     }
+
+//     if (result.algorithm !== 'RSA-2048-OAEP-SHA256') {
+//         throw new Error('Algoritma RSA Public Key tidak sesuai.');
+//     }
+
+//     const publicKeyBuffer =
+//         base64ToArrayBuffer(result.publicKey);
+
+//     serverRsaPublicKey =
+//         await crypto.subtle.importKey(
+//             'spki',
+//             publicKeyBuffer,
+//             {
+//                 name: 'RSA-OAEP',
+//                 hash: 'SHA-256'
+//             },
+//             false,
+//             ['encrypt']
+//         );
+
+//     return result;
+// }
+
+
+// // =========================================================
+// // 9. GENERATE AES KEY AND ENCRYPT WITH RSA
+// // =========================================================
+
+// async function createAndWrapAesSessionKey(publicKeyBase64) {
+//     if (!window.crypto || !window.crypto.subtle) {
+//         throw new Error(
+//             'Web Crypto API tidak tersedia. Gunakan localhost atau HTTPS.'
+//         );
+//     }
+
+//     /*
+//      * Import RSA Public Key.
+//      *
+//      * Format backend:
+//      * DER / SPKI / Base64
+//      */
+
+//     const publicKeyBuffer =
+//         base64ToArrayBuffer(publicKeyBase64);
+
+//     const rsaPublicKey =
+//         await crypto.subtle.importKey(
+//             'spki',
+//             publicKeyBuffer,
+//             {
+//                 name: 'RSA-OAEP',
+//                 hash: 'SHA-256'
+//             },
+//             false,
+//             ['encrypt']
+//         );
+
+//     /*
+//      * Generate AES-256-GCM Session Key.
+//      *
+//      * Key dibuat extractable sementara agar dapat
+//      * diekspor dan dibungkus menggunakan RSA.
+//      */
+
+//     const temporaryAesKey =
+//         await crypto.subtle.generateKey(
+//             {
+//                 name: 'AES-GCM',
+//                 length: 256
+//             },
+//             true,
+//             ['encrypt', 'decrypt']
+//         );
+
+//     const rawAesKey = new Uint8Array(
+//         await crypto.subtle.exportKey(
+//             'raw',
+//             temporaryAesKey
+//         )
+//     );
+
+//     try {
+//         /*
+//          * Encrypt AES Session Key menggunakan RSA.
+//          */
+
+//         const encryptedKeyBuffer =
+//             await crypto.subtle.encrypt(
+//                 {
+//                     name: 'RSA-OAEP'
+//                 },
+//                 rsaPublicKey,
+//                 rawAesKey
+//             );
+
+//         /*
+//          * Import ulang sebagai non-extractable CryptoKey.
+//          */
+
+//         const clientAesKey =
+//             await crypto.subtle.importKey(
+//                 'raw',
+//                 rawAesKey,
+//                 {
+//                     name: 'AES-GCM'
+//                 },
+//                 false,
+//                 ['encrypt', 'decrypt']
+//             );
+
+//         return {
+//             encryptedSessionKey:
+//                 arrayBufferToBase64(encryptedKeyBuffer),
+
+//             clientAesKey
+//         };
+
+//     } finally {
+//         /*
+//          * Best effort membersihkan buffer raw AES key.
+//          */
+//         rawAesKey.fill(0);
+//     }
+// }
+
+
+// async function generateNewSessionKey() {
+//     if (!serverRsaPublicKey) {
+//         throw new Error('RSA Public Key belum tersedia.');
+//     }
+
+//     const temporaryKey = await crypto.subtle.generateKey(
+//         {
+//             name: 'AES-GCM',
+//             length: 256
+//         },
+//         true,
+//         ['encrypt', 'decrypt']
+//     );
+
+//     const rawKey = new Uint8Array(
+//         await crypto.subtle.exportKey('raw', temporaryKey)
+//     );
+
+//     try {
+//         const encryptedKey = await crypto.subtle.encrypt(
+//             {
+//                 name: 'RSA-OAEP'
+//             },
+//             serverRsaPublicKey,
+//             rawKey
+//         );
+
+//         const clientKey = await crypto.subtle.importKey(
+//             'raw',
+//             rawKey,
+//             {
+//                 name: 'AES-GCM'
+//             },
+//             false,
+//             ['encrypt', 'decrypt']
+//         );
+
+//         return {
+//             clientKey,
+//             encryptedNewSessionKey:
+//                 arrayBufferToBase64(encryptedKey)
+//         };
+
+//     } finally {
+//         rawKey.fill(0);
+//     }
+// }
+
+
+// // =========================================================
+// // 10. START SECURE SESSION
+// // =========================================================
+
+// async function startSecureSession() {
+//     if (sessionStats.active) {
+//         throw new Error(
+//             'Sesi masih aktif. Akhiri sesi terlebih dahulu.'
+//         );
+//     }
+
+//     if (!window.crypto?.subtle) {
+//         throw new Error(
+//             'Browser tidak mendukung Web Crypto API.'
+//         );
+//     }
+
+//     /*
+//      * STEP 1
+//      * Mengambil RSA Public Key dari backend.
+//      */
+
+//     const publicKeyData =
+//         await fetchDynamicPublicKey();
+
+//     /*
+//      * STEP 2
+//      * Membuat AES Session Key dan mengenkripsinya.
+//      */
+
+//     const {
+//         encryptedSessionKey,
+//         clientAesKey
+//     } = await createAndWrapAesSessionKey(
+//         publicKeyData.publicKey
+//     );
+
+//     /*
+//      * STEP 3
+//      * Mengirim encrypted AES key ke backend.
+//      */
+
+//     const response = await fetch(
+//         `${API_BASE}/session`,
+//         {
+//             method: 'POST',
+//             headers: {
+//                 'Content-Type': 'application/json',
+//                 Accept: 'application/json'
+//             },
+//             body: JSON.stringify({
+//                 encryptedSessionKey,
+//                 rotationIntervalMessages:
+//                     getRotationThreshold(),
+//                 rotationIntervalSec:
+//                     getRotationIntervalSec()
+//             })
+//         }
+//     );
+
+//     const result =
+//         await readJsonResponse(response);
+
+//     /*
+//      * Mendukung format respons:
+//      * { status, message, data: { sessionId, ... } }
+//      *
+//      * maupun:
+//      * { sessionId, ... }
+//      */
+
+//     const sessionData = result.data || result;
+
+//     if (!sessionData.sessionId) {
+//         throw new Error(
+//             'Session ID tidak ditemukan pada respons backend.'
+//         );
+//     }
+
+//     /*
+//      * STEP 4
+//      * Menyimpan AES CryptoKey di memori halaman.
+//      */
+
+//     clientSessionKey = clientAesKey;
+
+//     sessionStats.startedAtMs = Date.now();
+
+//     sessionStats.keyVersion =
+//         Number(sessionData.keyVersion) || 1;
+//     sessionStats.lastSequence =
+//         Number(sessionData.sequence) || 0;
+
+//     /*
+//      * STEP 5
+//      * Memperbarui tampilan sesi.
+//      */
+
+//     updateSessionStatusUI({
+//         active: true,
+//         sessionId: sessionData.sessionId,
+//         keyBits: Number(publicKeyData.keyBits) || 2048,
+//         totalRequests: Number(sessionData.totalRequests) || 0,
+//         rotationCount: Number(sessionData.rotationCount) || 0,
+//         lastRotationMs: 0
+//     });
+
+//     setText(
+//         rotSessionBoxEl,
+//         `Session ID: ${sessionData.sessionId} | Key Version: ${sessionStats.keyVersion}`
+//     );
+
+//     setText(
+//         rotIvTagBoxEl,
+//         'IV: Belum tersedia | Tag: Belum tersedia'
+//     );
+
+//     setText(
+//         rotCipherBoxEl,
+//         'Ciphertext belum tersedia'
+//     );
+
+//     setText(
+//         rotDecryptedBoxEl,
+//         'Belum ada pesan yang didekripsi'
+//     );
+
+//     setText(
+//         manualTimingEl,
+//         '-'
+//     );
+
+//     setText(
+//         manualSummaryLineEl,
+//         'Secure session berhasil dibentuk. AES-256 Session Key telah dibuat di browser dan dikirim ke backend dalam bentuk RSA-OAEP ciphertext.'
+//     );
+
+//     return sessionData;
+// }
+
+// // =========================================================
+// // 11. END SECURE SESSION
+// // =========================================================
+
+// async function endSecureSession() {
+//     if (
+//         !sessionStats.active ||
+//         !sessionStats.sessionId
+//     ) {
+//         throw new Error(
+//             'Tidak ada secure session yang aktif.'
+//         );
+//     }
+
+//     const response = await fetch(
+//         `${API_BASE}/session/close`,
+//         {
+//             method: 'POST',
+//             headers: {
+//                 'Content-Type': 'application/json',
+//                 Accept: 'application/json'
+//             },
+//             body: JSON.stringify({
+//                 sessionId: sessionStats.sessionId
+//             })
+//         }
+//     );
+
+//     const result =
+//         await readJsonResponse(response);
+
+//     /*
+//      * Menghapus referensi AES CryptoKey dari halaman.
+//      * Ini tidak menjamin seluruh salinan memori terhapus.
+//      */
+
+//     clientSessionKey = null;
+
+//     sessionStats.startedAtMs = 0;
+//     sessionStats.keyVersion = 1;
+//     sessionStats.lastSequence = 0;
+
+//     updateSessionStatusUI({
+//         active: false,
+//         sessionId: null,
+//         keyBits: 2048,
+//         totalRequests: 0,
+//         rotationCount: 0,
+//         lastRotationMs: 0
+//     });
+
+//     setText(
+//         rotSessionBoxEl,
+//         'Key ID: - | Rotasi: - | Pesan pada Kunci: -'
+//     );
+
+//     setText(
+//         rotIvTagBoxEl,
+//         'IV: - | Tag: -'
+//     );
+
+//     setText(
+//         rotCipherBoxEl,
+//         '-'
+//     );
+
+//     setText(
+//         rotDecryptedBoxEl,
+//         '-'
+//     );
+
+//     setText(
+//         manualTimingEl,
+//         '-'
+//     );
+
+//     setText(
+//         manualSummaryLineEl,
+//         result.message || 'Secure session berhasil ditutup.'
+//     );
+
+//     return result;
+// }
+
+// // =========================================================
+// // SEND ENCRYPTED MESSAGE
+// // POST /api/dynamic-rotation/message
+// // =========================================================
+
+
+// async function sendDynamicMessageOnce(message) {
+//     if (!sessionStats.active || !sessionStats.sessionId) {
+//         throw new Error('Secure Session belum aktif.');
+//     }
+
+//     if (!clientSessionKey) {
+//         throw new Error('AES Session Key tidak tersedia.');
+//     }
+
+//     if (!message || !message.trim()) {
+//         throw new Error('Pesan tidak boleh kosong.');
+//     }
+
+//     // Sequence berikutnya.
+//     const sequence = sessionStats.lastSequence + 1;
+
+//     const keyVersion = sessionStats.keyVersion;
+//     const sessionId = sessionStats.sessionId;
+
+//     const encoder = new TextEncoder();
+
+//     // 1. Enkripsi pesan di browser.
+//     const encryptionStart = performance.now();
+
+//     const encryptedRequest = await encryptClientMessage(
+//         message,
+//         sequence,
+//         keyVersion
+//     );
+
+//     const encryptionEnd = performance.now();
+
+//     const clientEncryptionMs =
+//         encryptionEnd - encryptionStart;
+
+//     // 2. Siapkan request.
+//     const requestBody = {
+//         sessionId,
+//         sequence,
+//         iv: encryptedRequest.iv,
+//         ciphertext: encryptedRequest.ciphertext,
+//         authTag: encryptedRequest.authTag
+//     };
+
+//     const requestJson = JSON.stringify(requestBody);
+
+//     const requestBytes = encoder.encode(requestJson).length;
+
+//     // 3. Kirim ke backend.
+//     const requestStart = performance.now();
+
+//     const response = await fetch(
+//         `${API_BASE}/message`,
+//         {
+//             method: 'POST',
+//             headers: {
+//                 'Content-Type': 'application/json',
+//                 Accept: 'application/json'
+//             },
+//             body: requestJson
+//         }
+//     );
+
+//     const result = await readJsonResponse(response);
+
+//     const responseEnd = performance.now();
+
+//     const responseTimeMs = responseEnd - requestStart;
+
+//     const responseData = result.data || result;
+
+//     if (
+//         !responseData.encryptedResponse ||
+//         !responseData.responseIV ||
+//         !responseData.responseAuthTag
+//     ) {
+//         throw new Error(
+//             'Respons backend tidak memiliki data enkripsi yang lengkap.'
+//         );
+//     }
+
+//     // Pastikan backend mengembalikan sequence yang sama.
+//     if (Number(responseData.sequence) !== sequence) {
+//         throw new Error(
+//             'Sequence response tidak sesuai dengan sequence request.'
+//         );
+//     }
+
+//     if (Number(responseData.keyVersion) !== keyVersion) {
+//         throw new Error(
+//             'Key version response tidak sesuai.'
+//         );
+//     }
+
+//     // 4. Dekripsi response.
+//     const decryptionStart = performance.now();
+
+//     const decryptedResponse = await decryptServerResponse({
+//         ciphertext: responseData.encryptedResponse,
+//         iv: responseData.responseIV,
+//         authTag: responseData.responseAuthTag,
+//         sequence,
+//         keyVersion
+//     });
+
+//     const decryptionEnd = performance.now();
+
+//     const clientDecryptionMs =
+//         decryptionEnd - decryptionStart;
+
+//     // 5. Verifikasi hasil.
+//     if (decryptedResponse !== message) {
+//         throw new Error(
+//             'Verifikasi gagal: pesan hasil dekripsi berbeda dari pesan awal.'
+//         );
+//     }
+
+//     // 6. Update sequence hanya setelah verifikasi response.
+//     sessionStats.lastSequence = sequence;
+
+//     sessionStats.totalRequests =
+//         Number(responseData.totalRequests) ||
+//         sessionStats.totalRequests + 1;
+
+//     renderSessionStatistics();
+
+//     const responseBytes = encoder.encode(
+//         JSON.stringify(result)
+//     ).length;
+
+//     // 7. Tampilkan hasil.
+//     setText(
+//         rotSessionBoxEl,
+//         `Session ID: ${sessionId} | Key Version: ${keyVersion} | Sequence: ${sequence} | Total Request: ${sessionStats.totalRequests}`
+//     );
+
+//     setText(
+//         rotIvTagBoxEl,
+//         `Request IV: ${encryptedRequest.iv} | Request Tag: ${encryptedRequest.authTag} | Response IV: ${responseData.responseIV} | Response Tag: ${responseData.responseAuthTag}`
+//     );
+
+//     setText(
+//         rotCipherBoxEl,
+//         `Request Ciphertext: ${encryptedRequest.ciphertext}\n\nResponse Ciphertext: ${responseData.encryptedResponse}`
+//     );
+
+//     setText(
+//         rotDecryptedBoxEl,
+//         decryptedResponse
+//     );
+
+//     setText(
+//         manualStatusEl,
+//         `Berhasil — Sequence ${sequence} Terverifikasi`
+//     );
+
+//     if (manualStatusEl) {
+//         manualStatusEl.className = 'text-success';
+//     }
+
+//     setText(
+//         manualTimingEl,
+//         `Enkripsi Client: ${clientEncryptionMs.toFixed(3)} ms | Backend Crypto: ${Number(responseData.cryptoProcessMs || 0).toFixed(3)} ms | Dekripsi Client: ${clientDecryptionMs.toFixed(3)} ms`
+//     );
+
+//     setText(
+//         manualSummaryLineEl,
+//         `Pesan berhasil dikirim dan diverifikasi. Response Time: ${responseTimeMs.toFixed(3)} ms | Request: ${requestBytes} bytes | Response: ${responseBytes} bytes`
+//     );
+
+//     return {
+//         success: true,
+//         verified: true,
+//         sequence,
+//         responseTimeMs,
+//         clientEncryptionMs,
+//         clientDecryptionMs,
+//         cryptoProcessMs: Number(responseData.cryptoProcessMs || 0),
+//         requestBytes,
+//         responseBytes,
+//         totalBytes: requestBytes + responseBytes
+//     };
+// }
+
+// // =========================================================
+// // SEND MESSAGE WITH AUTOMATIC KEY ROTATION
+// // =========================================================
+
+// async function sendDynamicMessage(message) {
+//     if (isProcessingRequest) {
+//         throw new Error(
+//             'Masih ada proses komunikasi yang sedang berjalan.'
+//         );
+//     }
+
+//     isProcessingRequest = true;
+
+//     const overallStart = performance.now();
+
+//     try {
+//         let rotationResult = null;
+//         let messageResult;
+
+//         try {
+//             // Percobaan pertama mengirim pesan.
+//             messageResult = await sendDynamicMessageOnce(message);
+
+//         } catch (error) {
+
+//             // Jika server meminta rotasi, lakukan rotasi otomatis.
+//             if (
+//                 error.code !== 'ROTATION_REQUIRED' ||
+//                 error.status !== 409
+//             ) {
+//                 throw error;
+//             }
+
+//             console.log(
+//                 '[DYNAMIC ROTATION] Server meminta rotasi kunci.'
+//             );
+
+//             rotationResult = await requestDynamicRotation();
+
+//             console.log(
+//                 '[DYNAMIC ROTATION] Rotasi berhasil:',
+//                 rotationResult
+//             );
+
+//             // Kirim ulang pesan menggunakan key dan sequence baru.
+//             messageResult = await sendDynamicMessageOnce(message);
+//         }
+
+//         const totalElapsedMs =
+//             performance.now() - overallStart;
+
+//         setText(
+//             manualTimingEl,
+//             `Response Time Total: ${totalElapsedMs.toFixed(3)} ms | Waktu Rotasi: ${(rotationResult?.rotationTimeMs || 0).toFixed(3)} ms`
+//         );
+
+//         return {
+//             ...messageResult,
+
+//             // Waktu total mencakup rotasi dan pengiriman ulang.
+//             responseTimeMs: totalElapsedMs,
+
+//             rotationPerformed: Boolean(rotationResult),
+
+//             rotationTimeMs:
+//                 rotationResult?.rotationTimeMs || 0,
+
+//             requestBytes:
+//                 messageResult.requestBytes +
+//                 (rotationResult?.requestBytes || 0),
+
+//             responseBytes:
+//                 messageResult.responseBytes +
+//                 (rotationResult?.responseBytes || 0),
+
+//             totalBytes:
+//                 messageResult.totalBytes +
+//                 (rotationResult?.totalBytes || 0)
+//         };
+
+//     } finally {
+//         isProcessingRequest = false;
+//     }
+// }
+
+
+// // =========================================================
+// // 12. START SESSION BUTTON
+// // =========================================================
+
+// btnStartSession?.addEventListener(
+//     'click',
+//     async () => {
+//         btnStartSession.disabled = true;
+
+//         setText(
+//             statusSessionStateEl,
+//             'Membentuk secure session...'
+//         );
+
+//         setText(
+//             manualStatusEl,
+//             'Mengambil RSA Public Key...'
+//         );
+
+//         if (manualStatusEl) {
+//             manualStatusEl.className = '';
+//         }
+
+//         try {
+//             await startSecureSession();
+
+//             setText(
+//                 manualStatusEl,
+//                 'Berhasil — Secure Session Aktif'
+//             );
+
+//             if (manualStatusEl) {
+//                 manualStatusEl.className = 'text-success';
+//             }
+
+//         } catch (error) {
+//             console.error(
+//                 'Gagal mengaktifkan sesi:',
+//                 error
+//             );
+
+//             clientSessionKey = null;
+
+//             updateSessionStatusUI({
+//                 active: false
+//             });
+
+//             setText(
+//                 manualStatusEl,
+//                 `Gagal: ${error.message}`
+//             );
+
+//             if (manualStatusEl) {
+//                 manualStatusEl.className = 'text-danger';
+//             }
+
+//             setText(
+//                 manualSummaryLineEl,
+//                 error.message
+//             );
+
+//         } finally {
+//             btnStartSession.disabled =
+//                 sessionStats.active;
+//         }
+//     }
+// );
+
+// // =========================================================
+// // 13. END SESSION BUTTON
+// // =========================================================
+
+// btnEndSession?.addEventListener(
+//     'click',
+//     async () => {
+//         btnEndSession.disabled = true;
+
+//         setText(
+//             statusSessionStateEl,
+//             'Menutup secure session...'
+//         );
+
+//         try {
+//             await endSecureSession();
+
+//             setText(
+//                 manualStatusEl,
+//                 'Sesi berhasil ditutup'
+//             );
+
+//             if (manualStatusEl) {
+//                 manualStatusEl.className = 'text-success';
+//             }
+
+//         } catch (error) {
+//             console.error(
+//                 'Gagal menutup sesi:',
+//                 error
+//             );
+
+//             setText(
+//                 manualStatusEl,
+//                 `Gagal menutup sesi: ${error.message}`
+//             );
+
+//             if (manualStatusEl) {
+//                 manualStatusEl.className = 'text-danger';
+//             }
+
+//         } finally {
+//             btnEndSession.disabled =
+//                 !sessionStats.active;
+//         }
+//     }
+// );
+
+// // =========================================================
+// // 14. ROTATION CONFIGURATION EVENTS
+// // =========================================================
+
+// cfgMaxRequestsInput?.addEventListener(
+//     'input',
+//     renderSessionStatistics
+// );
+
+// cfgMaxRequestsInput?.addEventListener(
+//     'change',
+//     () => {
+//         getRotationThreshold();
+//         renderSessionStatistics();
+//     }
+// );
+
+// cfgIntervalSecSelect?.addEventListener(
+//     'change',
+//     renderSessionStatistics
+// );
+
+// // =========================================================
+// // 15. BATCH INPUT CONFIGURATION
+// // =========================================================
+
+// if (batchPresetSelect && batchCountInput) {
+//     batchPresetSelect.addEventListener(
+//         'change',
+//         () => {
+//             batchCountInput.value =
+//                 batchPresetSelect.value;
+//         }
+//     );
+
+//     batchCountInput.addEventListener(
+//         'input',
+//         () => {
+//             const value = String(batchCountInput.value);
+
+//             const matchingOption =
+//                 Array.from(batchPresetSelect.options)
+//                     .find((option) => option.value === value);
+
+//             if (matchingOption) {
+//                 batchPresetSelect.value = value;
+//             }
+//         }
+//     );
+// }
+
+// // =========================================================
+// // 16. MANUAL TESTING
+// // =========================================================
+
+// manualForm?.addEventListener(
+//     'submit',
+//     async (event) => {
+//         event.preventDefault();
+
+//         if (!sessionStats.active || !clientSessionKey) {
+//             setText(
+//                 manualStatusEl,
+//                 'Aktifkan secure session terlebih dahulu.'
+//             );
+
+//             if (manualStatusEl) {
+//                 manualStatusEl.className = 'text-danger';
+//             }
+
+//             return;
+//         }
+
+//         const message = manualMessageInput?.value || '';
+
+//         if (!message.trim()) {
+//             setText(
+//                 manualStatusEl,
+//                 'Pesan tidak boleh kosong.'
+//             );
+
+//             if (manualStatusEl) {
+//                 manualStatusEl.className = 'text-danger';
+//             }
+
+//             return;
+//         }
+
+//         btnManualSend.disabled = true;
+
+//         btnManualSend.textContent = 'Mengirim Pesan...';
+
+//         setText(
+//             manualStatusEl,
+//             'Mengenkripsi dan mengirim pesan...'
+//         );
+
+//         if (manualStatusEl) {
+//             manualStatusEl.className = '';
+//         }
+
+//         try {
+//             const result = await sendDynamicMessage(message);
+
+//             console.log(
+//                 '[DYNAMIC ROTATION] Manual test berhasil:',
+//                 result
+//             );
+
+//         } catch (error) {
+//             console.error(
+//                 '[DYNAMIC ROTATION] Manual test gagal:',
+//                 error
+//             );
+
+//             setText(
+//                 manualStatusEl,
+//                 `Pengujian gagal: ${error.message}`
+//             );
+
+//             if (manualStatusEl) {
+//                 manualStatusEl.className = 'text-danger';
+//             }
+
+//             setText(
+//                 manualSummaryLineEl,
+//                 error.message
+//             );
+
+//         } finally {
+//             btnManualSend.disabled = !sessionStats.active;
+
+//             btnManualSend.textContent =
+//                 sessionStats.active
+//                     ? 'Kirim & Uji AES-256-GCM'
+//                     : 'Aktifkan Sesi Terlebih Dahulu';
+//         }
+//     }
+// );
+
+// // =========================================================
+// // 17. BATCH TESTING
+// // =========================================================
+
+// batchForm?.addEventListener(
+//     'submit',
+//     (event) => {
+//         event.preventDefault();
+
+//         if (!sessionStats.active) {
+//             setText(
+//                 batchStatusTextEl,
+//                 'Status: Aktifkan sesi terlebih dahulu.'
+//             );
+
+//             return;
+//         }
+
+//         setText(
+//             batchStatusTextEl,
+//             'Status: Batch testing menunggu endpoint komunikasi Dynamic Rotation.'
+//         );
+//     }
+// );
+
+// // =========================================================
+// // 18. RESET RECAP
+// // =========================================================
+
+// function resetRecap() {
+//     const defaults = [
+//         [recapTotalReqEl, '0'],
+//         [recapSuccessCountEl, '0'],
+//         [recapFailedCountEl, '0'],
+
+//         [recapAvgRespEl, '0.000 ms'],
+//         [recapMinRespEl, '0.000 ms'],
+//         [recapMaxRespEl, '0.000 ms'],
+
+//         [recapTotalTimeEl, '0.000 ms'],
+//         [recapRpsEl, '0.000 request/detik'],
+//         [recapSuccessRateEl, '0.00%'],
+
+//         [recapAvgLatEl, '0.000 ms'],
+//         [recapAvgTputEl, '0.000 KB/s'],
+//         [recapTotalBytesEl, '0 bytes'],
+
+//         [recapAvgCpuEl, '0.000 ms'],
+//         [recapAvgRssEl, '0.00 MB'],
+//         [recapAvgHeapEl, '0.00 MB']
+//     ];
+
+//     defaults.forEach(([element, value]) => {
+//         setText(element, value);
+//     });
+
+//     if (recapFooterStatusEl) {
+//         recapFooterStatusEl.style.display = 'none';
+//     }
+
+//     setText(
+//         exportInfoEl,
+//         'Hasil pengujian belum tersedia untuk diunduh.'
+//     );
+
+//     if (btnExportCsv) {
+//         btnExportCsv.disabled = true;
+//     }
+// }
+
+
+// async function createRotationCommand(
+//     sequence,
+//     oldKeyVersion,
+//     encryptedNewSessionKey
+// ) {
+//     if (!clientSessionKey) {
+//         throw new Error('AES Session Key lama tidak tersedia.');
+//     }
+
+//     const iv = crypto.getRandomValues(
+//         new Uint8Array(AES_GCM_IV_LENGTH)
+//     );
+
+//     const aad = new TextEncoder().encode(
+//         `${sessionStats.sessionId}:${sequence}:${oldKeyVersion}:ROTATE:${encryptedNewSessionKey}`
+//     );
+
+//     const plaintext = new TextEncoder().encode('ROTATE');
+
+//     const encrypted = await crypto.subtle.encrypt(
+//         {
+//             name: 'AES-GCM',
+//             iv,
+//             additionalData: aad,
+//             tagLength: 128
+//         },
+//         clientSessionKey,
+//         plaintext
+//     );
+
+//     const bytes = new Uint8Array(encrypted);
+
+//     return {
+//         iv: arrayBufferToBase64(iv),
+//         ciphertext: arrayBufferToBase64(
+//             bytes.slice(0, bytes.length - AES_GCM_TAG_LENGTH)
+//         ),
+//         authTag: arrayBufferToBase64(
+//             bytes.slice(bytes.length - AES_GCM_TAG_LENGTH)
+//         )
+//     };
+// }
+
+// async function verifyRotationAcknowledgement(
+//     response,
+//     newSessionKey,
+//     sequence,
+//     newKeyVersion
+// ) {
+//     const ciphertext = new Uint8Array(
+//         base64ToArrayBuffer(response.encryptedAcknowledgement)
+//     );
+
+//     const iv = new Uint8Array(
+//         base64ToArrayBuffer(response.acknowledgementIV)
+//     );
+
+//     const authTag = new Uint8Array(
+//         base64ToArrayBuffer(response.acknowledgementAuthTag)
+//     );
+
+//     if (
+//         iv.length !== AES_GCM_IV_LENGTH ||
+//         authTag.length !== AES_GCM_TAG_LENGTH
+//     ) {
+//         throw new Error('Format konfirmasi rotasi tidak valid.');
+//     }
+
+//     const combined = new Uint8Array(
+//         ciphertext.length + authTag.length
+//     );
+
+//     combined.set(ciphertext);
+//     combined.set(authTag, ciphertext.length);
+
+//     const aad = new TextEncoder().encode(
+//         `${sessionStats.sessionId}:${sequence}:${newKeyVersion}:ROTATE_ACK`
+//     );
+
+//     const decrypted = await crypto.subtle.decrypt(
+//         {
+//             name: 'AES-GCM',
+//             iv,
+//             additionalData: aad,
+//             tagLength: 128
+//         },
+//         newSessionKey,
+//         combined
+//     );
+
+//     const acknowledgement = new TextDecoder(
+//         'utf-8',
+//         { fatal: true }
+//     ).decode(decrypted);
+
+//     const expected =
+//         `${sessionStats.sessionId}:${sequence}:${newKeyVersion}:ROTATED`;
+
+//     if (acknowledgement !== expected) {
+//         throw new Error('Konfirmasi rotasi tidak valid.');
+//     }
+
+//     return true;
+// }
+
+// // =========================================================
+// // DYNAMIC SESSION KEY ROTATION
+// // POST /api/dynamic-rotation/rotate
+// // =========================================================
+
+// async function requestDynamicRotation() {
+//     if (!sessionStats.active || !sessionStats.sessionId) {
+//         throw new Error('Tidak ada secure session aktif untuk dirotasi.');
+//     }
+
+//     if (!clientSessionKey) {
+//         throw new Error('AES Session Key lama tidak tersedia.');
+//     }
+
+//     const rotationStart = performance.now();
+
+//     const sequence = sessionStats.lastSequence + 1;
+//     const oldKeyVersion = sessionStats.keyVersion;
+
+//     // 1. Buat AES Session Key baru dan bungkus menggunakan RSA.
+//     const {
+//         clientKey: newSessionKey,
+//         encryptedNewSessionKey
+//     } = await generateNewSessionKey();
+
+//     // 2. Buat perintah ROTATE menggunakan AES key lama.
+//     const rotationCommand = await createRotationCommand(
+//         sequence,
+//         oldKeyVersion,
+//         encryptedNewSessionKey
+//     );
+
+//     const requestBody = {
+//         sessionId: sessionStats.sessionId,
+//         sequence,
+//         iv: rotationCommand.iv,
+//         ciphertext: rotationCommand.ciphertext,
+//         authTag: rotationCommand.authTag,
+//         encryptedNewSessionKey
+//     };
+
+//     const encoder = new TextEncoder();
+//     const requestJson = JSON.stringify(requestBody);
+//     const requestBytes = encoder.encode(requestJson).length;
+
+//     // 3. Kirim permintaan rotasi ke backend.
+//     const response = await fetch(
+//         `${API_BASE}/rotate`,
+//         {
+//             method: 'POST',
+//             headers: {
+//                 'Content-Type': 'application/json',
+//                 Accept: 'application/json'
+//             },
+//             body: requestJson
+//         }
+//     );
+
+//     const result = await readJsonResponse(response);
+//     const responseData = result.data || result;
+
+//     const responseBytes = encoder.encode(
+//         JSON.stringify(result)
+//     ).length;
+
+//     // 4. Validasi session, sequence, dan key version.
+//     const newKeyVersion = Number(responseData.keyVersion);
+
+//     if (responseData.sessionId !== sessionStats.sessionId) {
+//         throw new Error('Session ID pada respons rotasi tidak sesuai.');
+//     }
+
+//     if (Number(responseData.sequence) !== sequence) {
+//         throw new Error('Sequence pada respons rotasi tidak sesuai.');
+//     }
+
+//     if (newKeyVersion !== oldKeyVersion + 1) {
+//         throw new Error('Key version baru tidak sesuai.');
+//     }
+
+//     // 5. Verifikasi acknowledgement dengan AES key baru.
+//     await verifyRotationAcknowledgement(
+//         responseData,
+//         newSessionKey,
+//         sequence,
+//         newKeyVersion
+//     );
+
+//     // 6. Ganti key client hanya setelah acknowledgement valid.
+//     clientSessionKey = newSessionKey;
+
+//     sessionStats.keyVersion = newKeyVersion;
+//     sessionStats.lastSequence = sequence;
+
+//     sessionStats.totalRequests =
+//         Number(responseData.totalRequests) ||
+//         sessionStats.totalRequests + 1;
+
+//     sessionStats.rotationCount =
+//         Number(responseData.rotationCount) ||
+//         sessionStats.rotationCount + 1;
+
+//     sessionStats.lastRotationMs = Date.now();
+
+//     lastRotationTime = Date.now();
+
+//     renderSessionStatistics();
+
+//     const rotationTimeMs =
+//         performance.now() - rotationStart;
+
+//     setText(
+//         manualStatusEl,
+//         `Rotasi berhasil — Key Version ${newKeyVersion}`
+//     );
+
+//     if (manualStatusEl) {
+//         manualStatusEl.className = 'text-success';
+//     }
+
+//     setText(
+//         manualSummaryLineEl,
+//         `Dynamic Session Key Rotation berhasil. Sequence: ${sequence} | Key Version: ${newKeyVersion} | Waktu rotasi: ${rotationTimeMs.toFixed(3)} ms`
+//     );
+
+//     return {
+//         success: true,
+//         sequence,
+//         keyVersion: newKeyVersion,
+//         rotationTimeMs,
+//         requestBytes,
+//         responseBytes,
+//         totalBytes: requestBytes + responseBytes
+//     };
+// }
+
+// // =========================================================
+// // 19. EXPORT CSV
+// // =========================================================
+
+// btnExportCsv?.addEventListener(
+//     'click',
+//     () => {
+//         if (!batchRecords.length) {
+//             return;
+//         }
+
+//         const headers = [
+//             'Request',
+//             'Status HTTP',
+//             'Response Time (ms)',
+//             'Latency (ms)',
+//             'Throughput (KB/s)',
+//             'Total Bytes',
+//             'Crypto Process (ms)',
+//             'CPU Server (ms)',
+//             'RAM RSS (MB)',
+//             'RAM Heap (MB)'
+//         ];
+
+//         const rows = batchRecords.map((record) => [
+//             record.seq,
+//             record.httpStatus,
+//             record.responseTimeMs,
+//             record.latencyMs,
+//             record.throughputKBs,
+//             record.totalBytes,
+//             record.cryptoProcessMs,
+//             record.cpuServerMs,
+//             record.ramRssMb,
+//             record.ramHeapMb
+//         ]);
+
+//         const csv = [headers, ...rows]
+//             .map((row) => {
+//                 return row.map((value) => {
+//                     const text = String(value ?? '');
+//                     return `"${text.replace(/"/g, '""')}"`;
+//                 }).join(',');
+//             })
+//             .join('\r\n');
+
+//         const blob = new Blob(
+//             ['\uFEFF', csv],
+//             {
+//                 type: 'text/csv;charset=utf-8;'
+//             }
+//         );
+
+//         const url = URL.createObjectURL(blob);
+//         const anchor = document.createElement('a');
+
+//         anchor.href = url;
+//         anchor.download =
+//             `hasil-dynamic-rotation-${Date.now()}.csv`;
+
+//         document.body.appendChild(anchor);
+//         anchor.click();
+//         anchor.remove();
+
+//         URL.revokeObjectURL(url);
+//     }
+// );
+
+// // =========================================================
+// // 20. INITIALIZATION
+// // =========================================================
+
+// /*
+//  * Sesi tidak dipulihkan setelah halaman direload.
+//  *
+//  * Session ID tidak dapat digunakan untuk memulihkan AES
+//  * CryptoKey yang sebelumnya hanya tersimpan di memori browser.
+//  */
+
+// updateSessionStatusUI({
+//     active: false,
+//     sessionId: null,
+//     keyBits: 2048,
+//     totalRequests: 0,
+//     rotationCount: 0,
+//     lastRotationMs: 0
+// });
+
+// resetRecap();
+
+// if (batchTableBodyEl) {
+//     batchTableBodyEl.innerHTML =
+//         '<tr><td colspan="8" class="empty-cell">Belum ada data pengujian batch.</td></tr>';
+// }
+
+// setText(
+//     statusPublicKeyEl,
+//     'Public key akan diambil saat tombol Mulai Sesi ditekan'
+// );
+
+// renderSessionStatistics();
+
+// window.setInterval(
+//     renderSessionStatistics,
+//     1000
+// );
+
+// // =========================================================
+// // 21. DEBUGGING
+// // =========================================================
+
+// console.log(
+//     `[${SCHEME_ID}] Dynamic Rotation frontend berhasil dimuat.`
+// );

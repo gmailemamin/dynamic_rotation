@@ -1,4 +1,3 @@
-
 const SCHEME_ID = 'rsa-aes-hybrid';
 const MAX_BATCH_REQUESTS = 10000;
 const AES_GCM_IV_LENGTH = 12;
@@ -11,6 +10,16 @@ const AES_GCM_TAG_LENGTH = 16;
 const manualForm = document.getElementById('manualForm');
 const manualMessageInput = document.getElementById('manualMessage');
 const btnManualSend = document.getElementById('btnManualSend');
+
+// Secure session panel
+const hybridSessionBadgeEl = document.getElementById('hybridSessionBadge');
+const hybridSessionStatusEl = document.getElementById('hybridSessionStatus');
+const hybridSessionDescriptionEl = document.getElementById('hybridSessionDescription');
+const hybridSessionAlgorithmEl = document.getElementById('hybridSessionAlgorithm');
+const hybridSessionIdEl = document.getElementById('hybridSessionId');
+const hybridSessionKeyStatusEl = document.getElementById('hybridSessionKeyStatus');
+const btnToggleSession = document.getElementById('btnToggleSession');
+const hybridSessionMessageEl = document.getElementById('hybridSessionMessage');
 
 const hybridKeyBoxEl = document.getElementById('hybridKeyBox');
 const hybridIvTagBoxEl = document.getElementById('hybridIvTagBox');
@@ -63,6 +72,8 @@ let hybridSessionKey = null;
 let hybridSessionId = null;
 let hybridSessionReady = false;
 let requestSequence = 0;
+let sessionBusy = false;
+let batchRunning = false;
 
 let batchRecords = [];
 let lastBatchElapsedMs = 0;
@@ -153,6 +164,76 @@ async function endServerBatchMeasurement(batchId) {
 }
 
 // ==========================================
+// SESSION UI
+// ==========================================
+
+function updateSessionUI() {
+    const active =
+        hybridSessionReady &&
+        Boolean(hybridSessionId) &&
+        Boolean(hybridSessionKey);
+
+    if (hybridSessionBadgeEl) {
+        hybridSessionBadgeEl.textContent = active ? 'Active' : 'Inactive';
+        hybridSessionBadgeEl.className =
+            active ? 'text-success' : 'text-secondary';
+    }
+
+    if (hybridSessionStatusEl) {
+        hybridSessionStatusEl.textContent = active
+            ? 'Secure Session Aktif'
+            : 'Secure Session Tidak Aktif';
+    }
+
+    if (hybridSessionDescriptionEl) {
+        hybridSessionDescriptionEl.textContent = active
+            ? 'Secure session telah terbentuk dan siap digunakan untuk pengujian manual maupun batch.'
+            : 'Bentuk secure session sebelum memulai komunikasi menggunakan RSA-AES Hybrid.';
+    }
+
+    if (hybridSessionAlgorithmEl) {
+        hybridSessionAlgorithmEl.textContent =
+            'RSA-2048 OAEP SHA-256 + AES-256-GCM';
+    }
+
+    if (hybridSessionIdEl) {
+        hybridSessionIdEl.textContent = hybridSessionId || '-';
+    }
+
+    if (hybridSessionKeyStatusEl) {
+        hybridSessionKeyStatusEl.textContent = active
+            ? 'AES-256 session key aktif'
+            : 'AES-256 session key tidak aktif';
+    }
+
+    if (btnToggleSession) {
+        btnToggleSession.textContent = active
+            ? 'Nonaktifkan Secure Session'
+            : 'Aktifkan Secure Session';
+
+        btnToggleSession.disabled = sessionBusy || batchRunning;
+    }
+
+    if (btnManualSend) {
+        btnManualSend.disabled =
+            !active || sessionBusy || batchRunning;
+    }
+
+    if (btnBatchStart) {
+        btnBatchStart.disabled =
+            !active || sessionBusy || batchRunning;
+    }
+}
+
+function setSessionMessage(message, isError = false) {
+    if (!hybridSessionMessageEl) return;
+
+    hybridSessionMessageEl.textContent = message;
+    hybridSessionMessageEl.className =
+        isError ? 'text-danger' : 'text-success';
+}
+
+// ==========================================
 // 1. RSA-AES SESSION ESTABLISHMENT
 // ==========================================
 
@@ -167,20 +248,27 @@ async function initializeHybridSession() {
         );
     }
 
+    sessionBusy = true;
+    updateSessionUI();
+
     manualStatusEl.textContent = 'Membentuk secure session...';
     manualStatusEl.className = '';
+
     manualSummaryLineEl.textContent =
         'Mengambil public key RSA dan membuat AES-256 session key.';
 
     let rawSessionKey = null;
 
     try {
-        const publicKeyResponse = await fetch('/api/hybrid/public-key');
+        const publicKeyResponse =
+            await fetch('/api/hybrid/public-key');
+
         const publicKeyData = await publicKeyResponse.json();
 
         if (!publicKeyResponse.ok || !publicKeyData.publicKey) {
             throw new Error(
-                publicKeyData.error || 'Gagal mengambil public key server.'
+                publicKeyData.error ||
+                'Gagal mengambil public key server.'
             );
         }
 
@@ -195,7 +283,8 @@ async function initializeHybridSession() {
             ['encrypt']
         );
 
-        rawSessionKey = crypto.getRandomValues(new Uint8Array(32));
+        rawSessionKey =
+            crypto.getRandomValues(new Uint8Array(32));
 
         hybridSessionKey = await crypto.subtle.importKey(
             'raw',
@@ -223,24 +312,29 @@ async function initializeHybridSession() {
             )
         };
 
-        const sessionResponse = await fetch('/api/hybrid/session', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(sessionPayload)
-        });
+        const sessionResponse = await fetch(
+            '/api/hybrid/session',
+            {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(sessionPayload)
+            }
+        );
 
         const sessionData = await sessionResponse.json();
 
         if (!sessionResponse.ok || !sessionData.sessionId) {
             throw new Error(
-                sessionData.error || 'Server gagal membentuk session.'
+                sessionData.error ||
+                'Server gagal membentuk session.'
             );
         }
 
         hybridSessionId = sessionData.sessionId;
         hybridSessionReady = true;
+        requestSequence = 0;
 
         rawSessionKey.fill(0);
         rawSessionKey = null;
@@ -249,16 +343,25 @@ async function initializeHybridSession() {
             `[${encryptedSessionKeyBytes.length} bytes] ` +
             bytesToHex(encryptedSessionKeyBytes);
 
-        manualStatusEl.textContent = 'Secure Session Berhasil Dibentuk';
+        manualStatusEl.textContent =
+            'Secure Session Berhasil Dibentuk';
+
         manualStatusEl.className = 'text-success';
 
         manualSummaryLineEl.textContent =
             `RSA-OAEP berhasil membungkus AES-256 session key. ` +
             `Session ID: ${hybridSessionId}`;
 
+        updateSessionUI();
+
+        setSessionMessage(
+            'Secure session berhasil diaktifkan.'
+        );
+
         console.log('Hybrid session berhasil dibentuk.');
         console.log('Algorithm:', publicKeyData.algorithm);
         console.log('Session ID:', hybridSessionId);
+
         console.log(
             'Encrypted session key:',
             encryptedSessionKeyBytes.length,
@@ -274,13 +377,120 @@ async function initializeHybridSession() {
         hybridSessionId = null;
         hybridSessionReady = false;
 
-        manualStatusEl.textContent = 'Gagal Membentuk Session';
+        manualStatusEl.textContent =
+            'Gagal Membentuk Session';
+
         manualStatusEl.className = 'text-danger';
+
         manualSummaryLineEl.textContent =
             `Pembentukan session gagal: ${error.message}`;
 
+        setSessionMessage(
+            `Gagal membentuk secure session: ${error.message}`,
+            true
+        );
+
         console.error('Hybrid session error:', error);
         throw error;
+
+    } finally {
+        sessionBusy = false;
+        updateSessionUI();
+    }
+}
+
+// ==========================================
+// 2. CLOSE RSA-AES SESSION
+// ==========================================
+
+async function closeHybridSession() {
+    if (!hybridSessionReady || !hybridSessionId) {
+        return;
+    }
+
+    const sessionIdToClose = hybridSessionId;
+
+    sessionBusy = true;
+    updateSessionUI();
+
+    try {
+        const response = await fetch(
+            '/api/hybrid/session/close',
+            {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    sessionId: sessionIdToClose
+                })
+            }
+        );
+
+        const responseText = await response.text();
+
+        let data = {};
+
+        try {
+            data = responseText
+                ? JSON.parse(responseText)
+                : {};
+        } catch {
+            throw new Error(
+                'Respons server saat menutup sesi bukan JSON yang valid.'
+            );
+        }
+
+        if (!response.ok) {
+            const closeError = new Error(
+                data.error ||
+                data.message ||
+                `HTTP ${response.status}`
+            );
+
+            closeError.status = response.status;
+            throw closeError;
+        }
+
+        hybridSessionKey = null;
+        hybridSessionId = null;
+        hybridSessionReady = false;
+        requestSequence = 0;
+
+        setSessionMessage(
+            'Secure session berhasil dinonaktifkan.'
+        );
+
+        manualStatusEl.textContent =
+            'Secure Session Tidak Aktif';
+
+        manualStatusEl.className = '';
+
+        manualTimingEl.textContent = '-';
+        hybridIvTagBoxEl.textContent = 'IV: - | Tag: -';
+        hybridCipherBoxEl.textContent = '-';
+        hybridKeyBoxEl.textContent = '-';
+
+        manualSummaryLineEl.textContent =
+            'Secure session telah diakhiri.';
+
+    } catch (error) {
+        if ([404, 410].includes(error.status)) {
+            hybridSessionKey = null;
+            hybridSessionId = null;
+            hybridSessionReady = false;
+        }
+
+        setSessionMessage(
+            `Gagal menonaktifkan secure session: ${error.message}`,
+            true
+        );
+
+        throw error;
+
+    } finally {
+        sessionBusy = false;
+        updateSessionUI();
     }
 }
 
@@ -371,8 +581,10 @@ async function decryptHybridMessage(encryptedMessage, iv, authTag) {
 // ==========================================
 
 async function sendMessageRequest(messageText, seq = null) {
-    if (!hybridSessionReady) {
-        await initializeHybridSession();
+    if (!hybridSessionReady || !hybridSessionKey || !hybridSessionId) {
+        throw new Error(
+            'Secure session belum aktif. Aktifkan sesi terlebih dahulu.'
+        );
     }
 
     const currentSequence = seq ?? ++requestSequence;
@@ -405,7 +617,9 @@ async function sendMessageRequest(messageText, seq = null) {
     const responseText = await response.text();
     const t1 = performance.now();
 
-    const responseBytes = new TextEncoder().encode(responseText).length;
+    const responseBytes =
+        new TextEncoder().encode(responseText).length;
+
     const responseTimeMs = Number((t1 - t0).toFixed(3));
 
     let data;
@@ -493,7 +707,6 @@ async function sendMessageRequest(messageText, seq = null) {
     };
 }
 
-
 // ==========================================
 // 5. MANUAL TESTING
 // ==========================================
@@ -509,7 +722,17 @@ manualForm.addEventListener('submit', async event => {
         return;
     }
 
-    btnManualSend.disabled = true;
+    if (!hybridSessionReady) {
+        manualStatusEl.textContent =
+            'Aktifkan secure session terlebih dahulu.';
+
+        manualStatusEl.className = 'text-danger';
+        return;
+    }
+
+    sessionBusy = true;
+    updateSessionUI();
+
     manualStatusEl.textContent = 'Mengirim pesan terenkripsi...';
     manualStatusEl.className = '';
 
@@ -549,7 +772,8 @@ manualForm.addEventListener('submit', async event => {
         console.error('Manual Hybrid Test:', error);
 
     } finally {
-        btnManualSend.disabled = false;
+        sessionBusy = false;
+        updateSessionUI();
     }
 });
 
@@ -562,6 +786,7 @@ function renderBatchTable(rows) {
         batchTableBodyEl.innerHTML =
             '<tr><td colspan="16" class="empty-cell">' +
             'Belum ada data pengujian batch.</td></tr>';
+
         return;
     }
 
@@ -620,16 +845,22 @@ function updateRecap(rows, batchElapsedMs = 0, isFinished = false) {
         }
 
         recapFooterStatusEl.style.display = 'none';
+
         exportInfoEl.textContent =
             'Hasil pengujian belum tersedia untuk diunduh.';
+
         btnExportCsv.disabled = true;
         return;
     }
 
     const successRate = (successCount / total) * 100;
-    recapSuccessRateEl.textContent = `${successRate.toFixed(2)}%`;
 
-    const elapsedMs = batchElapsedMs > 0 ? batchElapsedMs : 0;
+    recapSuccessRateEl.textContent =
+        `${successRate.toFixed(2)}%`;
+
+    const elapsedMs = batchElapsedMs > 0
+        ? batchElapsedMs
+        : 0;
 
     const totalBytes = rows.reduce(
         (sum, row) => sum + (row.totalBytes || 0),
@@ -644,13 +875,17 @@ function updateRecap(rows, batchElapsedMs = 0, isFinished = false) {
         ? (totalBytes / 1024) / (elapsedMs / 1000)
         : 0;
 
-    recapTotalTimeEl.textContent = `${elapsedMs.toFixed(3)} ms`;
+    recapTotalTimeEl.textContent =
+        `${elapsedMs.toFixed(3)} ms`;
+
     recapRpsEl.textContent =
         `${requestThroughput.toFixed(3)} request/detik`;
+
     recapTotalBytesEl.textContent = `${totalBytes} bytes`;
 
     if (successCount > 0) {
-        const responseTimes = successRows.map(row => row.responseTimeMs);
+        const responseTimes =
+            successRows.map(row => row.responseTimeMs);
 
         const average = key => successRows.reduce(
             (sum, row) => sum + (row[key] || 0),
@@ -701,16 +936,20 @@ function updateRecap(rows, batchElapsedMs = 0, isFinished = false) {
 
     if (isFinished) {
         recapFooterStatusEl.style.display = 'inline-block';
-        exportInfoEl.textContent = 'Hasil pengujian siap diunduh.';
+        exportInfoEl.textContent =
+            'Hasil pengujian siap diunduh.';
+
         btnExportCsv.disabled = false;
+
     } else {
         recapFooterStatusEl.style.display = 'none';
+
         exportInfoEl.textContent =
             `Sedang memproses ${total} baris data...`;
+
         btnExportCsv.disabled = true;
     }
 }
-
 
 // ==========================================
 // 8. BATCH TESTING
@@ -759,8 +998,14 @@ batchForm.addEventListener('submit', async event => {
     renderBatchTable([]);
     updateRecap([], 0, false);
 
-    btnBatchStart.disabled = true;
-    btnManualSend.disabled = true;
+    if (!hybridSessionReady || !hybridSessionKey || !hybridSessionId) {
+        batchStatusTextEl.textContent =
+            'Status: Aktifkan secure session terlebih dahulu.';
+        return;
+    }
+
+    batchRunning = true;
+    updateSessionUI();
 
     batchStatusTextEl.textContent =
         'Status: Mempersiapkan secure session...';
@@ -772,11 +1017,7 @@ batchForm.addEventListener('submit', async event => {
     let serverBatchId = null;
 
     try {
-        // Pastikan secure session sudah terbentuk sebelum batch dimulai.
-        if (!hybridSessionReady) {
-            await initializeHybridSession();
-        }
-
+        // Batch hanya berjalan menggunakan secure session yang sudah aktif.
         // Mulai pengukuran CPU batch pada server.
         serverBatchId = await startServerBatchMeasurement();
 
@@ -876,7 +1117,9 @@ batchForm.addEventListener('submit', async event => {
         // =====================================
 
         // Akhiri pengukuran CPU batch pada server satu kali.
-        batchMetrics = await endServerBatchMeasurement(serverBatchId);
+        batchMetrics =
+            await endServerBatchMeasurement(serverBatchId);
+
         serverBatchId = null;
 
         lastBatchElapsedMs =
@@ -960,8 +1203,8 @@ batchForm.addEventListener('submit', async event => {
         }
 
     } finally {
-        btnBatchStart.disabled = false;
-        btnManualSend.disabled = false;
+        batchRunning = false;
+        updateSessionUI();
     }
 });
 
@@ -1028,7 +1271,8 @@ btnExportCsv.addEventListener('click', () => {
         )
     ];
 
-    const csvContent = '\uFEFF' + csvLines.join('\r\n');
+    const csvContent =
+        '\uFEFF' + csvLines.join('\r\n');
 
     const blob = new Blob(
         [csvContent],
@@ -1054,7 +1298,25 @@ btnExportCsv.addEventListener('click', () => {
 // ==========================================
 
 document.addEventListener('DOMContentLoaded', () => {
-    initializeHybridSession().catch(error => {
-        console.error('Gagal menginisialisasi Hybrid:', error);
-    });
+    // Secure session tidak dibentuk otomatis.
+    // Pengguna mengaktifkannya melalui tombol panel session.
+    updateSessionUI();
+
+    if (btnToggleSession) {
+        btnToggleSession.addEventListener('click', async () => {
+            if (sessionBusy || batchRunning) {
+                return;
+            }
+
+            try {
+                if (hybridSessionReady) {
+                    await closeHybridSession();
+                } else {
+                    await initializeHybridSession();
+                }
+            } catch (error) {
+                console.error('Session toggle error:', error);
+            }
+        });
+    }
 });
